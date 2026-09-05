@@ -116,13 +116,13 @@ function UpgradePage() {
         const opened = await openRazorpayCheckout({
           key: env.paymentPublicKey,
           amountInr: plan.priceInr,
-          orderId: order.orderId.startsWith("order_mock") ? undefined : order.orderId,
+          ...(order.orderId.startsWith("order_mock") ? {} : { orderId: order.orderId }),
           planName: plan.name,
           description: `${plan.name} Membership (${plan.durationMonths} months)`,
           user: {
-            fullName: user?.fullName,
-            email: user?.email,
-            mobile: user?.mobile,
+            ...(user?.fullName ? { fullName: user.fullName } : {}),
+            ...(user?.email ? { email: user.email } : {}),
+            ...(user?.mobile ? { mobile: user.mobile } : {}),
           },
           onSuccess: async (payment) => {
             await subscriptionsService.verifyPayment({

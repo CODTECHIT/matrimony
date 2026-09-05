@@ -157,12 +157,12 @@ export function ProfileCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pt-2 border-t border-border/60">
+        <div className="flex items-center gap-2 pt-2.5 border-t border-border/60">
           <Button
             asChild
-            variant="outline"
+            variant="neutral"
             size="sm"
-            className="flex-1 rounded-xl text-xs font-semibold h-9 border-border hover:bg-muted"
+            className="h-9 flex-1 px-2.5 sm:px-3 rounded-xl text-xs font-semibold text-foreground/80 hover:text-foreground hover:bg-muted/80 border-border/80 transition-colors whitespace-nowrap"
           >
             <Link to="/app/profiles/$profileId" params={{ profileId: profile.id }}>
               View Profile
@@ -173,10 +173,24 @@ export function ProfileCard({
               size="sm"
               onClick={() => onInterest(profile)}
               disabled={profile.interestSent}
-              className="flex-1 rounded-xl bg-[#C59B27] hover:bg-[#B38A20] text-white text-xs font-bold h-9 shadow-xs cursor-pointer"
+              className={cn(
+                "h-9 flex-1 px-2.5 sm:px-3 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer gap-1.5 whitespace-nowrap",
+                profile.interestSent
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200/90 hover:bg-emerald-100/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 cursor-default"
+                  : "bg-primary hover:bg-primary/90 text-white shadow-primary/20 hover:shadow-md active:scale-[0.98]"
+              )}
             >
-              <Heart className="size-3.5 fill-white mr-1.5" />
-              {profile.interestSent ? "Interest Sent" : "Send Interest"}
+              {profile.interestSent ? (
+                <>
+                  <Check className="size-3.5 shrink-0 stroke-[2.5]" />
+                  <span>Interest Sent</span>
+                </>
+              ) : (
+                <>
+                  <Heart className="size-3.5 shrink-0 fill-white" />
+                  <span>Send Interest</span>
+                </>
+              )}
             </Button>
           ) : null}
         </div>

@@ -73,7 +73,7 @@ function SearchPage() {
 
         <div className="min-w-0 flex-1">
           {results.isPending ? (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
               {Array.from({ length: 3 }).map((_, index) => (
                 <ProfileCardSkeleton key={index} />
               ))}
@@ -86,7 +86,7 @@ function SearchPage() {
               description="We couldn't find a profile matching this search."
             />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
               {results.data?.items.map((profile) => (
                 <ProfileCard key={profile.id} profile={profile} />
               ))}

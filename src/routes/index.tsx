@@ -122,10 +122,11 @@ function HomePage() {
                 alt="Royal Indian wedding celebration background"
                 className="h-full w-full object-cover object-[center_25%] sm:object-center"
               />
-              {/* Multi-layered cinematic gradient overlays for high readability and premium aesthetic */}
-              <div className="absolute inset-0 bg-gradient-to-r from-stone-950/95 via-stone-950/80 to-stone-950/40 lg:to-stone-950/25" />
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-stone-950/20 to-stone-950/50" />
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/15 via-transparent to-transparent pointer-events-none" />
+              {/* Refined cinematic warm scrim: ensures high text readability while keeping the royal palace vibrant and clear */}
+              <div className="absolute inset-0 bg-gradient-to-r from-stone-950/85 via-stone-950/60 via-45% to-stone-950/20 lg:to-transparent" />
+              {/* Subtle top and bottom cinematic vignetting without grey/muddy fogging */}
+              <div className="absolute inset-0 bg-gradient-to-b from-stone-950/50 via-transparent to-stone-950/60 pointer-events-none" />
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/20 via-transparent to-transparent pointer-events-none" />
             </div>
 
             {/* Hero Content Container */}
@@ -133,19 +134,19 @@ function HomePage() {
               <div className="grid items-center gap-10 lg:grid-cols-12">
                 {/* Left Content Column */}
                 <div className="text-white lg:col-span-7">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-stone-900/70 px-3.5 py-1.5 text-xs font-semibold text-amber-200 backdrop-blur-md shadow-lg">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-stone-900/70 px-3.5 py-1.5 text-xs font-semibold text-amber-200 backdrop-blur-md shadow-sm">
                     <Sparkles className="size-3.5 text-amber-400" />
                     <span>#1 Trusted Matchmaking Platform Since 2016</span>
                   </div>
 
-                  <h1 className="mt-5 font-display text-4xl leading-[1.1] font-semibold text-white sm:text-6xl lg:text-7xl">
+                  <h1 className="mt-5 font-display text-4xl leading-[1.1] font-semibold text-white sm:text-6xl lg:text-7xl drop-shadow-md">
                     Find your{" "}
                     <span className="bg-gradient-to-r from-rose-400 via-rose-300 to-amber-200 bg-clip-text text-transparent">
                       perfect match
                     </span>
                   </h1>
 
-                  <p className="mt-5 max-w-xl text-base text-stone-200/90 sm:text-lg leading-relaxed font-normal">
+                  <p className="mt-5 max-w-xl text-base text-stone-200/95 sm:text-lg leading-relaxed font-normal drop-shadow-sm">
                     Trusted by families. Chosen by hearts. YFJ Matrimony brings together verified
                     brides and grooms with complete privacy, respect, and family involvement.
                   </p>
@@ -154,7 +155,7 @@ function HomePage() {
                     <Button
                       asChild
                       size="lg"
-                      className="bg-primary hover:bg-primary/90 text-white shadow-xl shadow-rose-950/40 rounded-full px-6 text-base"
+                      className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/35 transition-all rounded-full px-6 text-base cursor-pointer"
                     >
                       <Link to="/register">
                         Register free <ArrowRight className="ml-1 size-4" />
@@ -164,7 +165,7 @@ function HomePage() {
                       asChild
                       variant="outline"
                       size="lg"
-                      className="rounded-full border-white/30 bg-white/10 text-white backdrop-blur-md hover:bg-white/20 hover:text-white px-6 text-base"
+                      className="rounded-full border-white/30 bg-white/10 text-white backdrop-blur-md hover:bg-white/20 hover:text-white px-6 text-base cursor-pointer"
                     >
                       <Link to="/app/browse">
                         <Search className="mr-1 size-4" /> Explore profiles
@@ -172,31 +173,31 @@ function HomePage() {
                     </Button>
                   </div>
 
-                  <dl className="mt-10 grid max-w-lg grid-cols-3 gap-6 pt-6 border-t border-white/15">
+                  <dl className="mt-10 grid max-w-lg grid-cols-3 gap-6 pt-6 border-t border-white/20">
                     <div>
-                      <dt className="font-display text-2xl sm:text-3xl font-bold text-amber-300">
+                      <dt className="font-display text-2xl sm:text-3xl font-bold text-amber-300 drop-shadow-sm">
                         18k+
                       </dt>
-                      <dd className="text-xs sm:text-sm text-stone-300 mt-0.5">Verified members</dd>
+                      <dd className="text-xs sm:text-sm text-stone-200 mt-0.5">Verified members</dd>
                     </div>
                     <div>
-                      <dt className="font-display text-2xl sm:text-3xl font-bold text-amber-300">
+                      <dt className="font-display text-2xl sm:text-3xl font-bold text-amber-300 drop-shadow-sm">
                         4.2k
                       </dt>
-                      <dd className="text-xs sm:text-sm text-stone-300 mt-0.5">Happy matches</dd>
+                      <dd className="text-xs sm:text-sm text-stone-200 mt-0.5">Happy matches</dd>
                     </div>
                     <div>
-                      <dt className="font-display text-2xl sm:text-3xl font-bold text-amber-300">
+                      <dt className="font-display text-2xl sm:text-3xl font-bold text-amber-300 drop-shadow-sm">
                         120+
                       </dt>
-                      <dd className="text-xs sm:text-sm text-stone-300 mt-0.5">Communities</dd>
+                      <dd className="text-xs sm:text-sm text-stone-200 mt-0.5">Communities</dd>
                     </div>
                   </dl>
                 </div>
 
                 {/* Right Matrimonial Match Finder Card */}
                 <div className="lg:col-span-5">
-                  <div className="rounded-3xl border border-white/25 bg-card/95 p-6 sm:p-7 shadow-2xl backdrop-blur-xl dark:bg-stone-900/95">
+                  <div className="rounded-3xl border border-white/30 bg-card/95 p-6 sm:p-7 shadow-xl shadow-black/20 backdrop-blur-xl dark:bg-stone-900/95">
                     <div className="flex items-center justify-between border-b border-border/80 pb-4">
                       <div>
                         <h2 className="font-display text-2xl font-bold text-foreground">
@@ -362,7 +363,7 @@ function HomePage() {
                       <Button
                         type="submit"
                         size="lg"
-                        className="w-full rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold shadow-lg shadow-rose-950/20 mt-2"
+                        className="w-full rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/35 transition-all mt-2 cursor-pointer"
                       >
                         <Search className="mr-2 size-4" /> Search Matches
                       </Button>

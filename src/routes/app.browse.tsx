@@ -127,7 +127,7 @@ function BrowsePage() {
 
         <div className="min-w-0 flex-1">
           {profilesQuery.isPending ? (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, index) => (
                 <ProfileCardSkeleton key={index} />
               ))}
@@ -149,7 +149,7 @@ function BrowsePage() {
             />
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
                 {profilesQuery.data?.items.map((profile) => (
                   <ProfileCard
                     key={profile.id}

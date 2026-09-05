@@ -117,7 +117,7 @@ export function PackageEditorDialog({ open, onOpenChange, initialPlan }: Package
     setIsSaving(true);
     try {
       const payload: Partial<Plan> = {
-        id: initialPlan?.id,
+        ...(initialPlan?.id ? { id: initialPlan.id } : {}),
         name: name.trim(),
         tier,
         priceInr: Number(priceInr),
