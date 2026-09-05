@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -40,6 +40,27 @@ function LoginPage() {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const userParam = params.get("user");
+    const errorParam = params.get("error");
+
+    if (errorParam) {
+      toast.error("Google sign-in could not be completed. Please use phone login.");
+    } else if (token && userParam) {
+      try {
+        const user = JSON.parse(decodeURIComponent(userParam));
+        setSession({ token, user });
+        toast.success(`Welcome, ${user.fullName.split(" ")[0]}!`);
+        void navigate({ to: user.role === "admin" ? "/admin" : "/app" });
+      } catch (err) {
+        console.error("Failed to parse OAuth session", err);
+      }
+    }
+  }, [setSession, navigate]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
