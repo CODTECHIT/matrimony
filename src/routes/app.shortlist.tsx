@@ -38,7 +38,7 @@ function ShortlistPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
       <PageHeader
         eyebrow="Saved"
         title="Shortlisted profiles"
@@ -46,8 +46,8 @@ function ShortlistPage() {
       />
 
       {query.isPending ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, index) => (
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 w-full max-w-full min-w-0">
+          {Array.from({ length: 4 }).map((_, index) => (
             <ProfileCardSkeleton key={index} />
           ))}
         </div>
@@ -65,7 +65,7 @@ function ShortlistPage() {
           }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 w-full max-w-full min-w-0">
           {query.data?.map((profile) => (
             <ProfileCard key={profile.id} profile={profile} onShortlist={handleShortlist} />
           ))}

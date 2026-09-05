@@ -12,8 +12,8 @@ export function PageHeader({
   eyebrow?: string;
 }) {
   return (
-    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0">
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between w-full min-w-0 max-w-full">
+      <div className="min-w-0 flex-1">
         {eyebrow ? (
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#C59B27]">{eyebrow}</p>
         ) : null}
@@ -24,7 +24,7 @@ export function PageHeader({
           <p className="mt-1 max-w-2xl text-xs sm:text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap items-center gap-2 min-w-0">{actions}</div> : null}
     </header>
   );
 }

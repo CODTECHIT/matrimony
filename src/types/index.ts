@@ -64,6 +64,8 @@ export interface Profile {
   /** Backend-controlled. The UI must never infer contact access itself. */
   canViewContact: boolean;
   contact?: { mobile: string; whatsapp?: string };
+  /** Rule-based compatibility score (0-100%) computed for recommended matches. */
+  matchScore?: number;
 }
 
 export interface ProfileFilters {

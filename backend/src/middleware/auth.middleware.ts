@@ -33,6 +33,22 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next();
+  }
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedUser;
+    req.user = decoded;
+  } catch {
+    // Proceed as guest if token is expired or invalid
+  }
+  next();
+}
+
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   requireAuth(req, res, () => {
     if (req.user?.role !== "admin") {

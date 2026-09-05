@@ -161,7 +161,7 @@ function UpgradePage() {
   if (plansQuery.isError) return <ErrorState onRetry={() => void plansQuery.refetch()} />;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8 pb-12">
+    <div className="mx-auto max-w-4xl space-y-8 pb-12 w-full max-w-full overflow-x-hidden min-w-0">
       {/* Top Bar Header matching Screen 7 & Screen 5 */}
       <div className="flex items-center gap-3 border-b border-border/70 pb-4">
         <Button
@@ -279,7 +279,7 @@ function UpgradePage() {
                 onClick={() => setSelectedPlanId(plan.id)}
                 className={`relative flex flex-col rounded-3xl p-5 cursor-pointer transition-all border-2 ${
                   isSelected
-                    ? "border-[#D92662] ring-2 ring-[#D92662]/20 bg-rose-50/30 dark:bg-rose-950/20 shadow-lg scale-[1.02]"
+                    ? "border-[#D92662] ring-2 ring-[#D92662]/20 bg-rose-50/30 dark:bg-rose-950/20 shadow-lg sm:scale-[1.02]"
                     : plan.popular
                       ? "border-[#C59B27] bg-amber-50/20 dark:bg-amber-950/10 shadow-sm hover:border-[#C59B27]/80"
                       : "border-border bg-card shadow-2xs hover:border-border/80"

@@ -6,6 +6,7 @@ import {
   filterProfiles,
   findProfile,
   mockState,
+  recommendedProfiles,
   shortlistedProfiles,
 } from "@/mocks/adapter";
 import { mockInterestsReceived, mockInterestsSent } from "@/mocks/data";
@@ -16,8 +17,8 @@ export const profilesService = {
     return api.get("/profiles", { query: filters as Record<string, string | number | undefined> });
   },
 
-  async recommended(): Promise<Profile[]> {
-    if (env.useMockApi) return delay(filterProfiles({ pageSize: 6 }).items);
+  async recommended(currentUser?: { gender?: string } | null): Promise<Profile[]> {
+    if (env.useMockApi) return delay(recommendedProfiles(currentUser));
     return api.get("/profiles/recommended");
   },
 

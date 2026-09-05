@@ -84,3 +84,48 @@ export function findProfile(id: string): Profile | undefined {
 export function shortlistedProfiles(): Profile[] {
   return mockProfiles.filter((p) => mockState.isShortlisted(p.id)).map(decorate);
 }
+
+export function recommendedProfiles(user?: { gender?: string } | null): Profile[] {
+  // If user is female, recommend male profiles; if male, recommend female profiles
+  const userGender = user?.gender?.toLowerCase() || "female";
+  const targetGender = userGender === "female" ? "male" : "female";
+
+  const candidates = mockProfiles.filter((p) => p.gender.toLowerCase() === targetGender);
+
+  const scored = candidates.map((p) => {
+    let score = 55; // Base baseline
+
+    // Religion & Community
+    if (p.religion === "Hindu") score += 15;
+    if (p.caste && p.caste !== "—") score += 5;
+
+    // Mother Tongue
+    if (p.motherTongue === "Hindi") score += 10;
+    else score += 5;
+
+    // Age alignment
+    const userAge = 26;
+    const diff = p.age - userAge;
+    if (targetGender === "male") {
+      if (diff >= 1 && diff <= 4) score += 15;
+      else if (diff >= -1 && diff <= 6) score += 10;
+      else score += 5;
+    } else {
+      if (diff <= 1 && diff >= -4) score += 15;
+      else if (diff <= 3 && diff >= -6) score += 10;
+      else score += 5;
+    }
+
+    // Verification boost
+    if (p.verified) score += 5;
+
+    const matchScore = Math.min(98, Math.max(68, score));
+    return {
+      ...decorate(p),
+      matchScore,
+    };
+  });
+
+  scored.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+  return scored.slice(0, 6);
+}

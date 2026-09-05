@@ -349,4 +349,3 @@ authRouter.get("/google/callback", async (req, res) => {
     return res.redirect(`${frontendUrl}/login?error=oauth_server_error`);
   }
 });
-

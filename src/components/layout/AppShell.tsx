@@ -6,6 +6,7 @@ import {
   Heart,
   Home,
   LogOut,
+  Menu,
   MessageCircle,
   Search,
   Settings,
@@ -64,36 +65,24 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background w-full max-w-full overflow-x-hidden">
       <header
         className={cn(
-          "sticky top-0 z-40 border-b border-border/70 bg-background/95 backdrop-blur-md",
+          "sticky top-0 z-40 border-b border-border/70 bg-background/95 backdrop-blur-md w-full max-w-full",
           isProfileDetails && "hidden lg:block",
         )}
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
-          <div className="flex items-center gap-3">
-            {/* Mobile Drawer Trigger matching Screen 2 */}
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3.5 py-2.5 sm:px-6">
+          <div className="flex items-center gap-2 min-w-0 shrink">
+            {/* Mobile Navigation Drawer Trigger (Menu button upside) */}
             <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
               <SheetTrigger asChild>
                 <button
                   type="button"
-                  className="flex items-center gap-2 text-left focus:outline-none md:hidden"
+                  className="grid size-9 shrink-0 place-items-center rounded-xl text-foreground hover:bg-muted active:scale-95 transition-transform md:hidden cursor-pointer"
                   aria-label="Open navigation menu"
                 >
-                  <Avatar className="size-10 border border-border shadow-xs">
-                    {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt="" /> : null}
-                    <AvatarFallback className="bg-primary-soft text-xs font-semibold text-primary">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="leading-tight">
-                    <span className="flex items-center gap-1 text-sm font-bold text-foreground">
-                      <span>{user?.fullName?.split(" ")[0] ?? "Welcome"}</span>
-                      <ChevronDown className="size-3.5 text-muted-foreground" />
-                    </span>
-                    <span className="text-[0.68rem] text-muted-foreground">Find your match</span>
-                  </div>
+                  <Menu className="size-5 text-foreground" />
                 </button>
               </SheetTrigger>
 
@@ -212,6 +201,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               </SheetContent>
             </Sheet>
 
+            {/* Mobile Company Logo */}
+            <div className="flex items-center min-w-0 shrink md:hidden">
+              <Logo linkTo="/app" size="xs" />
+            </div>
+
             {/* Desktop Brand Logo */}
             <div className="hidden md:flex items-center gap-3">
               <Logo linkTo="/app" />
@@ -223,27 +217,33 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           {/* Right Header Actions */}
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Button asChild variant="ghost" size="icon" aria-label="Search profiles">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              aria-label="Search profiles"
+              className="rounded-xl size-9 sm:size-10"
+            >
               <Link to="/app/search">
-                <Search className="size-5" />
+                <Search className="size-4.5 sm:size-5" />
               </Link>
             </Button>
-            {/* Bell with red dot notification badge matching Screen 9 */}
+            {/* Bell with red dot notification badge */}
             <Button
               asChild
               variant="ghost"
               size="icon"
               aria-label="Notifications"
-              className="relative"
+              className="relative rounded-xl size-9 sm:size-10"
             >
               <Link to="/app/interests/received">
-                <Bell className="size-5" />
+                <Bell className="size-4.5 sm:size-5" />
                 <span className="absolute top-2 right-2 size-2 rounded-full bg-[#D92662] ring-2 ring-background" />
               </Link>
             </Button>
-            <Link to="/app/my-profile" aria-label="My profile" className="hidden md:block">
-              <Avatar className="size-9 border border-border">
+            <Link to="/app/my-profile" aria-label="My profile" className="ml-0.5 shrink-0">
+              <Avatar className="size-8 sm:size-9 border border-border shadow-xs">
                 {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt="" /> : null}
                 <AvatarFallback className="bg-primary-soft text-xs font-semibold text-primary">
                   {initials}
@@ -257,7 +257,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Desktop Main Content Layout */}
       <div
         className={cn(
-          "mx-auto flex max-w-7xl gap-8 px-4 pt-6 sm:px-6 lg:pb-10",
+          "mx-auto flex w-full max-w-7xl min-w-0 gap-8 px-3.5 pt-4 sm:px-6 sm:pt-6 lg:pb-10 overflow-x-hidden",
           isProfileDetails ? "pb-6" : "pb-28",
         )}
       >
@@ -287,13 +287,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         </aside>
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1 w-full max-w-full overflow-x-hidden">{children}</main>
       </div>
 
-      {/* Fixed Bottom Tab Navigation matching Screen 9 */}
+      {/* Fixed Bottom Tab Navigation matching Requirement 2: Background pink and gold icons footer */}
       {!isProfileDetails ? (
         <nav
-          className="fixed inset-x-0 bottom-0 z-40 border-t border-border/80 bg-white/95 backdrop-blur-md lg:hidden shadow-lg shadow-black/5"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-[#F5D061]/30 bg-gradient-to-r from-[#D92662] via-[#C8175B] to-[#AD1457] lg:hidden shadow-lg shadow-rose-950/25 backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)] w-full max-w-full overflow-x-hidden"
           aria-label="Bottom Navigation"
         >
           <ul className="mx-auto grid max-w-lg grid-cols-5 py-1">
@@ -302,12 +302,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   to={to}
                   activeOptions={{ exact }}
-                  activeProps={{ className: "text-[#D92662]" }}
-                  inactiveProps={{ className: "text-muted-foreground hover:text-foreground" }}
-                  className="flex flex-col items-center gap-1 py-2 text-[0.7rem] font-semibold transition-colors"
+                  activeProps={{ className: "text-[#FFE57F] font-bold" }}
+                  inactiveProps={{ className: "text-[#FDE293]/75 hover:text-white" }}
+                  className="group flex flex-col items-center gap-0.5 py-1.5 text-[0.7rem] transition-transform active:scale-95"
                 >
-                  <Icon className="size-5" />
-                  <span>{label}</span>
+                  <div className="relative flex size-8 items-center justify-center rounded-xl transition-colors group-[.active]:bg-white/15">
+                    <Icon className="size-5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]" />
+                  </div>
+                  <span className="leading-tight drop-shadow-xs">{label}</span>
                 </Link>
               </li>
             ))}

@@ -73,7 +73,7 @@ function BrowsePage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full overflow-x-hidden min-w-0">
       <PageHeader
         eyebrow="Discover"
         title="Browse profiles"
@@ -83,14 +83,14 @@ function BrowsePage() {
             : "Finding profiles for you"
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             <Select
               value={filters.sort ?? "recent"}
               onValueChange={(sort) =>
                 setFilters((prev) => ({ ...prev, sort: sort as ProfileFilters["sort"], page: 1 }))
               }
             >
-              <SelectTrigger className="h-10 w-36 rounded-xl">
+              <SelectTrigger className="h-10 w-32 sm:w-36 rounded-xl">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -117,7 +117,7 @@ function BrowsePage() {
         }
       />
 
-      <div className="flex gap-6">
+      <div className="flex gap-6 w-full max-w-full min-w-0">
         <aside className="hidden w-64 shrink-0 lg:block">
           <div className="sticky top-24 rounded-3xl border border-border bg-card p-4 shadow-card">
             <h2 className="mb-4 font-display text-xl font-semibold">Filters</h2>
@@ -125,9 +125,9 @@ function BrowsePage() {
           </div>
         </aside>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 w-full max-w-full">
           {profilesQuery.isPending ? (
-            <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3 w-full max-w-full min-w-0">
               {Array.from({ length: 6 }).map((_, index) => (
                 <ProfileCardSkeleton key={index} />
               ))}
@@ -149,7 +149,7 @@ function BrowsePage() {
             />
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3 w-full max-w-full min-w-0">
                 {profilesQuery.data?.items.map((profile) => (
                   <ProfileCard
                     key={profile.id}
