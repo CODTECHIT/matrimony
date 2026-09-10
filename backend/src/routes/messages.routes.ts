@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabase } from "../config/supabase.js";
+import { db } from "../config/db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 
 export const messagesRouter = Router();
@@ -9,33 +9,30 @@ messagesRouter.get("/", requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
 
-    // Fetch conversations where user is user1 or user2
-    const { data: convos, error } = await supabase
-      .from("conversations")
-      .select(
-        `
-        id,
-        last_message,
-        last_message_at,
-        user1:users!user1_id(id, full_name, avatar_url),
-        user2:users!user2_id(id, full_name, avatar_url)
-      `,
-      )
-      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
-      .order("last_message_at", { ascending: false });
+    const { rows } = await db.query(
+      `SELECT c.id, c.last_message, c.last_message_at,
+              u1.id as u1_id, u1.full_name as u1_name, u1.avatar_url as u1_avatar,
+              u2.id as u2_id, u2.full_name as u2_name, u2.avatar_url as u2_avatar
+       FROM conversations c
+       JOIN users u1 ON c.user1_id = u1.id
+       JOIN users u2 ON c.user2_id = u2.id
+       WHERE c.user1_id = $1 OR c.user2_id = $1
+       ORDER BY c.last_message_at DESC`,
+      [userId],
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
-    const formatted = (convos || []).map((c: any) => {
-      const isUser1 = c.user1?.id === userId;
-      const otherUser = isUser1 ? c.user2 : c.user1;
+    const formatted = rows.map((c) => {
+      const isUser1 = c.u1_id === userId;
+      const otherId = isUser1 ? c.u2_id : c.u1_id;
+      const otherName = isUser1 ? c.u2_name : c.u1_name;
+      const otherAvatar = isUser1 ? c.u2_avatar : c.u1_avatar;
 
       return {
         id: c.id,
         participant: {
-          id: otherUser?.id || "",
-          fullName: otherUser?.full_name || "Member",
-          photos: otherUser?.avatar_url ? [otherUser.avatar_url] : [],
+          id: otherId || "",
+          fullName: otherName || "Member",
+          photos: otherAvatar ? [otherAvatar] : [],
         },
         lastMessage: c.last_message || "",
         lastMessageAt: c.last_message_at,
@@ -53,15 +50,15 @@ messagesRouter.get("/", requireAuth, async (req, res) => {
 messagesRouter.get("/:id/messages", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { data, error } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("conversation_id", id)
-      .order("created_at", { ascending: true });
+    const { rows } = await db.query(
+      `SELECT id, conversation_id, sender_id, body, created_at, status
+       FROM messages
+       WHERE conversation_id = $1
+       ORDER BY created_at ASC`,
+      [id],
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
-    const formatted = (data || []).map((m: any) => ({
+    const formatted = rows.map((m) => ({
       id: m.id,
       conversationId: m.conversation_id,
       senderId: m.sender_id,
@@ -83,36 +80,39 @@ messagesRouter.post("/:id/messages", requireAuth, async (req, res) => {
     const { body } = req.body;
     if (!body) return res.status(400).json({ message: "Message body is required" });
 
-    const { data, error } = await supabase
-      .from("messages")
-      .insert({
-        conversation_id: id,
-        sender_id: req.user!.id,
-        body,
-        status: "sent",
-      })
-      .select()
-      .single();
+    const client = await db.getClient();
+    try {
+      await client.query("BEGIN");
 
-    if (error) return res.status(400).json({ message: error.message });
+      const insertRes = await client.query(
+        `INSERT INTO messages (conversation_id, sender_id, body, status)
+         VALUES ($1, $2, $3, 'sent')
+         RETURNING id, conversation_id, sender_id, body, created_at, status`,
+        [id, req.user!.id, body],
+      );
 
-    // Update conversation last_message
-    await supabase
-      .from("conversations")
-      .update({
-        last_message: body,
-        last_message_at: new Date().toISOString(),
-      })
-      .eq("id", id);
+      await client.query(
+        `UPDATE conversations SET last_message = $1, last_message_at = NOW() WHERE id = $2`,
+        [body, id],
+      );
 
-    return res.json({
-      id: data.id,
-      conversationId: data.conversation_id,
-      senderId: data.sender_id,
-      body: data.body,
-      sentAt: data.created_at,
-      status: data.status,
-    });
+      await client.query("COMMIT");
+
+      const data = insertRes.rows[0];
+      return res.json({
+        id: data.id,
+        conversationId: data.conversation_id,
+        senderId: data.sender_id,
+        body: data.body,
+        sentAt: data.created_at,
+        status: data.status,
+      });
+    } catch (err: any) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }

@@ -3,7 +3,13 @@ import { toast } from "sonner";
 import { authService } from "@/services";
 import { env } from "@/lib/env";
 
-export function GoogleButton({ label = "Continue with Google" }: { label?: string }) {
+export function GoogleButton({
+  label = "Continue with Google",
+  onFallback,
+}: {
+  label?: string;
+  onFallback?: () => void;
+}) {
   const [pending, setPending] = useState(false);
 
   const handleClick = async () => {
@@ -15,10 +21,9 @@ export function GoogleButton({ label = "Continue with Google" }: { label?: strin
         return;
       }
       toast.info(
-        env.googleClientId
-          ? "Google sign-in will be enabled once the backend OAuth endpoint is live."
-          : "Google sign-in demo: Click 'Login with phone' or enter credentials.",
+        "Google sign-in is currently undergoing verification. Please continue with phone login.",
       );
+      onFallback?.();
     } catch {
       toast.error("Could not start Google sign-in. Please try again.");
     } finally {

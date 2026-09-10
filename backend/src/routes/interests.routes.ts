@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabase } from "../config/supabase.js";
+import { db } from "../config/db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 
 export const interestsRouter = Router();
@@ -7,49 +7,50 @@ export const interestsRouter = Router();
 // 1. Interests sent by current user
 interestsRouter.get("/sent", requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("interests")
-      .select("*, receiver:users!receiver_id(id, full_name, avatar_url, profiles(*))")
-      .eq("sender_id", req.user!.id)
-      .order("created_at", { ascending: false });
+    const { rows } = await db.query(
+      `SELECT i.id, i.status, i.created_at,
+              u.id as user_id, u.full_name, u.avatar_url, u.mobile, u.gender,
+              pr.age, pr.city, pr.state, pr.religion, pr.caste, pr.occupation, pr.education,
+              pr.photos, pr.verified, pr.marital_status, pr.last_active
+       FROM interests i
+       JOIN users u ON i.receiver_id = u.id
+       JOIN profiles pr ON u.id = pr.id
+       WHERE i.sender_id = $1
+       ORDER BY i.created_at DESC`,
+      [req.user!.id],
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
-    const formatted = (data || []).map((row: any) => {
-      const u = row.receiver;
-      const p = u?.profiles?.[0] || {};
-      return {
-        id: row.id,
-        status: row.status,
-        sentAt: row.created_at,
-        profile: {
-          id: u.id,
-          fullName: u.full_name,
-          age: p.age || 25,
-          gender: p.gender || "female",
-          photos: p.photos || (u.avatar_url ? [u.avatar_url] : []),
-          verified: Boolean(p.verified),
-          about: p.about || "",
-          height: p.height || "",
-          religion: p.religion || "",
-          caste: p.caste || "",
-          motherTongue: p.mother_tongue || "",
-          maritalStatus: p.marital_status || "never_married",
-          education: p.education || "",
-          occupation: p.occupation || "",
-          employmentStatus: p.employment_status || "",
-          incomeRange: p.income_range || "",
-          city: p.city || "",
-          state: p.state || "",
-          country: p.country || "India",
-          family: {},
-          lastActive: p.last_active || new Date().toISOString(),
-          shortlisted: false,
-          interestSent: true,
-          canViewContact: false,
-        },
-      };
-    });
+    const formatted = rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      sentAt: r.created_at,
+      profile: {
+        id: r.user_id,
+        fullName: r.full_name,
+        age: r.age || 25,
+        gender: r.gender || "female",
+        photos: r.photos && r.photos.length > 0 ? r.photos : r.avatar_url ? [r.avatar_url] : [],
+        verified: Boolean(r.verified),
+        about: "",
+        height: "",
+        religion: r.religion || "",
+        caste: r.caste || "",
+        motherTongue: "",
+        maritalStatus: r.marital_status || "never_married",
+        education: r.education || "",
+        occupation: r.occupation || "",
+        employmentStatus: "",
+        incomeRange: "",
+        city: r.city || "",
+        state: r.state || "",
+        country: "India",
+        family: {},
+        lastActive: r.last_active,
+        shortlisted: false,
+        interestSent: true,
+        canViewContact: false,
+      },
+    }));
 
     return res.json(formatted);
   } catch (err: any) {
@@ -60,49 +61,50 @@ interestsRouter.get("/sent", requireAuth, async (req, res) => {
 // 2. Interests received by current user
 interestsRouter.get("/received", requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("interests")
-      .select("*, sender:users!sender_id(id, full_name, avatar_url, profiles(*))")
-      .eq("receiver_id", req.user!.id)
-      .order("created_at", { ascending: false });
+    const { rows } = await db.query(
+      `SELECT i.id, i.status, i.created_at,
+              u.id as user_id, u.full_name, u.avatar_url, u.mobile, u.gender,
+              pr.age, pr.city, pr.state, pr.religion, pr.caste, pr.occupation, pr.education,
+              pr.photos, pr.verified, pr.marital_status, pr.last_active
+       FROM interests i
+       JOIN users u ON i.sender_id = u.id
+       JOIN profiles pr ON u.id = pr.id
+       WHERE i.receiver_id = $1
+       ORDER BY i.created_at DESC`,
+      [req.user!.id],
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
-    const formatted = (data || []).map((row: any) => {
-      const u = row.sender;
-      const p = u?.profiles?.[0] || {};
-      return {
-        id: row.id,
-        status: row.status,
-        sentAt: row.created_at,
-        profile: {
-          id: u.id,
-          fullName: u.full_name,
-          age: p.age || 25,
-          gender: p.gender || "male",
-          photos: p.photos || (u.avatar_url ? [u.avatar_url] : []),
-          verified: Boolean(p.verified),
-          about: p.about || "",
-          height: p.height || "",
-          religion: p.religion || "",
-          caste: p.caste || "",
-          motherTongue: p.mother_tongue || "",
-          maritalStatus: p.marital_status || "never_married",
-          education: p.education || "",
-          occupation: p.occupation || "",
-          employmentStatus: p.employment_status || "",
-          incomeRange: p.income_range || "",
-          city: p.city || "",
-          state: p.state || "",
-          country: p.country || "India",
-          family: {},
-          lastActive: p.last_active || new Date().toISOString(),
-          shortlisted: false,
-          interestSent: false,
-          canViewContact: false,
-        },
-      };
-    });
+    const formatted = rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      sentAt: r.created_at,
+      profile: {
+        id: r.user_id,
+        fullName: r.full_name,
+        age: r.age || 25,
+        gender: r.gender || "male",
+        photos: r.photos && r.photos.length > 0 ? r.photos : r.avatar_url ? [r.avatar_url] : [],
+        verified: Boolean(r.verified),
+        about: "",
+        height: "",
+        religion: r.religion || "",
+        caste: r.caste || "",
+        motherTongue: "",
+        maritalStatus: r.marital_status || "never_married",
+        education: r.education || "",
+        occupation: r.occupation || "",
+        employmentStatus: "",
+        incomeRange: "",
+        city: r.city || "",
+        state: r.state || "",
+        country: "India",
+        family: {},
+        lastActive: r.last_active,
+        shortlisted: false,
+        interestSent: false,
+        canViewContact: false,
+      },
+    }));
 
     return res.json(formatted);
   } catch (err: any) {
@@ -119,13 +121,11 @@ interestsRouter.post("/:id/:action", requireAuth, async (req, res) => {
     }
 
     const newStatus = action === "accept" ? "accepted" : "declined";
-    const { error } = await supabase
-      .from("interests")
-      .update({ status: newStatus })
-      .eq("id", id)
-      .eq("receiver_id", req.user!.id);
+    await db.query(
+      `UPDATE interests SET status = $1, updated_at = NOW() WHERE id = $2 AND receiver_id = $3`,
+      [newStatus, id, req.user!.id],
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });

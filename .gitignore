@@ -21,6 +21,8 @@ dist-ssr
 backend/.env
 backend/.env.*
 !backend/.env.example
+*.pem
+*.key
 
 # Wrangler / Cloudflare
 .wrangler/

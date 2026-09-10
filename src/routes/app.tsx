@@ -16,16 +16,15 @@ export const Route = createFileRoute("/app")({
 function AppLayout() {
   const { status } = useAuth();
   const navigate = useNavigate();
-  const gateEnabled = !env.useMockApi;
 
   useEffect(() => {
-    if (gateEnabled && status === "unauthenticated") {
+    if (status === "unauthenticated") {
       void navigate({ to: "/login" });
     }
-  }, [gateEnabled, status, navigate]);
+  }, [status, navigate]);
 
-  if (gateEnabled && status !== "authenticated") {
-    return <LoadingState label="Checking your session" />;
+  if (status !== "authenticated") {
+    return <LoadingState label="Checking your session…" />;
   }
 
   return (

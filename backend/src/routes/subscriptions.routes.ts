@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabase } from "../config/supabase.js";
+import { db } from "../config/db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 
 export const subscriptionsRouter = Router();
@@ -7,14 +7,11 @@ export const subscriptionsRouter = Router();
 // 1. Get all public plans
 subscriptionsRouter.get("/plans", async (_req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("plans")
-      .select("*")
-      .order("price_inr", { ascending: true });
+    const { rows } = await db.query(
+      "SELECT id, tier, name, price_inr, duration_months, popular, features, limits FROM plans ORDER BY price_inr ASC",
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
-    const formatted = (data || []).map((p: any) => ({
+    const formatted = rows.map((p) => ({
       id: p.id,
       tier: p.tier,
       name: p.name,
@@ -40,17 +37,16 @@ subscriptionsRouter.get("/plans", async (_req, res) => {
 subscriptionsRouter.get("/subscriptions/me", requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
-    const { data, error } = await supabase
-      .from("subscriptions")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { rows } = await db.query(
+      `SELECT plan_id, tier, status, started_at, expires_at, auto_renew, permissions
+       FROM subscriptions
+       WHERE user_id = $1 AND status = 'active'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [userId],
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
+    const data = rows[0];
     if (!data) {
       return res.json({
         planId: "plan-free",
@@ -85,17 +81,14 @@ subscriptionsRouter.get("/subscriptions/me", requireAuth, async (req, res) => {
   }
 });
 
-// 3. Create payment order (for Razorpay / Stripe)
+// 3. Create payment order
 subscriptionsRouter.post("/payments/orders", requireAuth, async (req, res) => {
   try {
     const { planId } = req.body;
-    const { data: plan, error } = await supabase
-      .from("plans")
-      .select("*")
-      .eq("id", planId)
-      .single();
+    const { rows } = await db.query("SELECT * FROM plans WHERE id = $1", [planId]);
+    const plan = rows[0];
 
-    if (error || !plan) {
+    if (!plan) {
       return res.status(404).json({ message: "Plan not found" });
     }
 
@@ -105,7 +98,7 @@ subscriptionsRouter.post("/payments/orders", requireAuth, async (req, res) => {
       orderId,
       amountInr: plan.price_inr,
       currency: "INR",
-      gatewayKey: process.env.RAZORPAY_KEY_ID || process.env.PAYMENT_GATEWAY_KEY || "rzp_test_key",
+      gatewayKey: process.env.PAYMENT_GATEWAY_KEY || "rzp_test_key",
     });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
@@ -114,74 +107,71 @@ subscriptionsRouter.post("/payments/orders", requireAuth, async (req, res) => {
 
 // 4. Verify payment and upgrade tier
 subscriptionsRouter.post("/payments/verify", requireAuth, async (req, res) => {
+  const client = await db.getClient();
   try {
+    await client.query("BEGIN");
     const { planId } = req.body;
     const userId = req.user!.id;
 
-    const { data: plan } = await supabase.from("plans").select("*").eq("id", planId).single();
+    const planRes = await client.query("SELECT * FROM plans WHERE id = $1", [planId]);
+    const plan = planRes.rows[0];
     const tier = plan?.tier || "gold";
 
     // Insert payment record
-    await supabase.from("payments").insert({
-      user_id: userId,
-      plan_id: planId,
-      amount_inr: plan?.price_inr || 0,
-      status: "success",
-      gateway_ref: req.body.razorpay_payment_id || `sim_${Date.now()}`,
-    });
+    await client.query(
+      `INSERT INTO payments (user_id, plan_id, amount_inr, status, gateway_ref)
+       VALUES ($1, $2, $3, 'success', $4)`,
+      [userId, planId, plan?.price_inr || 0, req.body.razorpay_payment_id || `sim_${Date.now()}`],
+    );
 
-    // Create subscription
+    // Calculate expiry
     const expiryDate = new Date();
     expiryDate.setMonth(expiryDate.getMonth() + (plan?.duration_months || 3));
 
-    const subscriptionPayload = {
-      user_id: userId,
-      plan_id: planId,
-      tier,
-      status: "active",
-      started_at: new Date().toISOString(),
-      expires_at: expiryDate.toISOString(),
-      auto_renew: true,
-      permissions: {
-        canMessage: true,
-        canViewContacts: true,
-        canUseAdvancedFilters: true,
-        profileHighlight: true,
-      },
+    const permissions = {
+      canMessage: true,
+      canViewContacts: true,
+      canUseAdvancedFilters: true,
+      profileHighlight: true,
     };
 
-    const { data: sub } = await supabase
-      .from("subscriptions")
-      .insert(subscriptionPayload)
-      .select()
-      .single();
+    const subRes = await client.query(
+      `INSERT INTO subscriptions (user_id, plan_id, tier, status, started_at, expires_at, auto_renew, permissions)
+       VALUES ($1, $2, $3, 'active', NOW(), $4, TRUE, $5)
+       RETURNING plan_id, tier, status, started_at, expires_at, auto_renew, permissions`,
+      [userId, planId, tier, expiryDate.toISOString(), JSON.stringify(permissions)],
+    );
 
-    // Update user's current plan
-    await supabase.from("users").update({ plan: tier }).eq("id", userId);
+    // Update user's plan in users table
+    await client.query("UPDATE users SET plan = $1 WHERE id = $2", [tier, userId]);
 
+    await client.query("COMMIT");
+
+    const sub = subRes.rows[0];
     return res.json({
-      planId,
-      tier,
-      status: "active",
-      startedAt: sub?.started_at || new Date().toISOString(),
-      expiresAt: sub?.expires_at || expiryDate.toISOString(),
-      autoRenew: true,
-      permissions: subscriptionPayload.permissions,
+      planId: sub.plan_id,
+      tier: sub.tier,
+      status: sub.status,
+      startedAt: sub.started_at,
+      expiresAt: sub.expires_at,
+      autoRenew: sub.auto_renew,
+      permissions: sub.permissions,
     });
   } catch (err: any) {
+    await client.query("ROLLBACK");
     return res.status(500).json({ message: err.message });
+  } finally {
+    client.release();
   }
 });
 
 // 5. Cancel auto renew
 subscriptionsRouter.post("/subscriptions/cancel", requireAuth, async (req, res) => {
   try {
-    await supabase
-      .from("subscriptions")
-      .update({ auto_renew: false })
-      .eq("user_id", req.user!.id)
-      .eq("status", "active");
-
+    await db.query(
+      "UPDATE subscriptions SET auto_renew = FALSE WHERE user_id = $1 AND status = 'active'",
+      [req.user!.id],
+    );
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });

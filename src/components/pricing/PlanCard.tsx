@@ -27,14 +27,16 @@ export function PlanCard({
   return (
     <article
       className={cn(
-        "relative flex flex-col rounded-3xl border bg-card p-5 shadow-card",
-        plan.popular ? "border-gold bg-gold-soft/40" : "border-border",
+        "relative flex flex-col rounded-3xl border p-5 shadow-card transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl",
+        plan.popular
+          ? "border-2 border-amber-400 bg-gradient-to-b from-amber-500/10 via-card to-card gold-glow"
+          : "border-amber-500/25 bg-card hover:border-amber-400/60",
         current && "ring-2 ring-primary",
       )}
     >
       {plan.popular ? (
-        <span className="absolute -top-3 right-5 rounded-full bg-primary px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-primary-foreground">
-          Popular
+        <span className="absolute -top-3.5 right-5 rounded-full bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 px-3.5 py-1 text-[0.7rem] font-bold uppercase tracking-wider text-white shadow-md shadow-amber-950/20 animate-pulse-glow">
+          Most Popular
         </span>
       ) : null}
 

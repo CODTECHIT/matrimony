@@ -212,3 +212,72 @@
     display: none;
   }
 }
+
+/* Premium Gold Styling Tokens & Utility Classes */
+@utility gold-border {
+  border: 1px solid oklch(0.762 0.104 82 / 0.45);
+  box-shadow: 0 0 18px oklch(0.762 0.104 82 / 0.12);
+}
+
+@utility gold-border-hover {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  &:hover {
+    border-color: oklch(0.762 0.104 82 / 0.8);
+    box-shadow: 0 8px 30px oklch(0.762 0.104 82 / 0.25);
+    transform: translateY(-2px);
+  }
+}
+
+@utility gold-card {
+  border: 1px solid oklch(0.762 0.104 82 / 0.35);
+  background: linear-gradient(145deg, oklch(1 0 0), oklch(0.985 0.012 85 / 0.7));
+  box-shadow: 0 6px 24px -2px oklch(0.762 0.104 82 / 0.12);
+}
+
+@utility gold-glow {
+  box-shadow: 0 4px 25px oklch(0.762 0.104 82 / 0.25);
+}
+
+@utility animate-gold-shimmer {
+  background-size: 200% auto;
+  animation: shimmer-gold 3s linear infinite;
+}
+
+@utility animate-float-slow {
+  animation: float-gentle 4s ease-in-out infinite;
+}
+
+@utility animate-pulse-glow {
+  animation: pulse-gold-glow 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes shimmer-gold {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float-gentle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pulse-gold-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 14px oklch(0.762 0.104 82 / 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 28px oklch(0.762 0.104 82 / 0.45),
+      0 0 10px oklch(0.762 0.104 82 / 0.3);
+  }
+}

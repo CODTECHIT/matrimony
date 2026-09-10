@@ -1,116 +1,33 @@
 import { Router } from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import { supabase } from "../config/supabase.js";
+import { db } from "../config/db.js";
 import { requireAdmin } from "../middleware/auth.middleware.js";
 
 export const adminRouter = Router();
-
-const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
-const ADMIN_LOGIN_ID = process.env.ADMIN_LOGIN_ID || "admin@yfjmatrimony.com";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Admin@YFJ2026";
-
-// Dedicated Admin Login (ID & Password)
-adminRouter.post("/login", async (req, res) => {
-  try {
-    const { loginId, password } = req.body;
-    if (!loginId || !password) {
-      return res.status(400).json({ message: "Login ID and password are required" });
-    }
-
-    // 1. Check direct configured admin credentials from environment
-    const matchesEnvAdmin =
-      loginId.trim().toLowerCase() === ADMIN_LOGIN_ID.toLowerCase() && password === ADMIN_PASSWORD;
-
-    if (matchesEnvAdmin) {
-      const token = jwt.sign({ id: "admin-super", role: "admin", plan: "platinum" }, JWT_SECRET, {
-        expiresIn: "7d",
-      });
-      return res.json({
-        token,
-        user: {
-          id: "admin-super",
-          fullName: "YFJ Super Admin",
-          email: ADMIN_LOGIN_ID,
-          mobile: "+91 99999 99999",
-          gender: "female",
-          role: "admin",
-          profileCompletion: 100,
-          plan: "platinum",
-        },
-      });
-    }
-
-    // 2. Check database users table for an admin user
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*")
-      .or(`email.eq.${loginId.trim()},mobile.eq.${loginId.trim()}`)
-      .eq("role", "admin")
-      .maybeSingle();
-
-    if (error || !user) {
-      return res.status(401).json({ message: "Invalid administrative credentials" });
-    }
-
-    if (user.password_hash) {
-      const isMatch = await bcrypt.compare(password, user.password_hash);
-      if (!isMatch) {
-        return res.status(401).json({ message: "Invalid administrative credentials" });
-      }
-    }
-
-    const token = jwt.sign({ id: user.id, role: "admin", plan: user.plan }, JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    return res.json({
-      token,
-      user: {
-        id: user.id,
-        fullName: user.full_name,
-        email: user.email,
-        mobile: user.mobile,
-        gender: user.gender,
-        role: "admin",
-        avatarUrl: user.avatar_url,
-        profileCompletion: user.profile_completion,
-        plan: user.plan,
-      },
-    });
-  } catch (err: unknown) {
-    return res.status(500).json({
-      message: err instanceof Error ? err.message : "Authentication error",
-    });
-  }
-});
 
 adminRouter.use(requireAdmin);
 
 // 1. Admin Stats
 adminRouter.get("/stats", async (_req, res) => {
   try {
-    const { count: totalUsers } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true });
-    const { count: activeSubs } = await supabase
-      .from("subscriptions")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "active");
-    const { count: pendingApprovals } = await supabase
-      .from("users")
-      .select("*", { count: "exact", head: true })
-      .eq("profile_status", "pending");
+    const totalUsersRes = await db.query("SELECT COUNT(*) FROM users");
+    const activeSubsRes = await db.query(
+      "SELECT COUNT(*) FROM subscriptions WHERE status = 'active'",
+    );
+    const pendingRes = await db.query(
+      "SELECT COUNT(*) FROM users WHERE profile_status = 'pending'",
+    );
+    const paymentsRes = await db.query(
+      "SELECT COALESCE(SUM(amount_inr), 0) as total FROM payments WHERE status = 'success'",
+    );
 
-    const { data: payments } = await supabase
-      .from("payments")
-      .select("amount_inr")
-      .eq("status", "success");
-    const revenueInr = (payments || []).reduce((sum, p) => sum + (p.amount_inr || 0), 0);
+    const totalUsers = parseInt(totalUsersRes.rows[0].count, 10);
+    const activeSubs = parseInt(activeSubsRes.rows[0].count, 10);
+    const pendingApprovals = parseInt(pendingRes.rows[0].count, 10);
+    const revenueInr = parseInt(paymentsRes.rows[0].total, 10);
 
     return res.json({
       totalUsers: totalUsers || 0,
-      activeUsers: Math.max(1, Math.floor((totalUsers || 0) * 0.8)),
+      activeUsers: Math.max(1, Math.floor(totalUsers * 0.8)),
       activeSubscriptions: activeSubs || 0,
       revenueInr: revenueInr || 0,
       newRegistrations: 12,
@@ -133,23 +50,28 @@ adminRouter.get("/stats", async (_req, res) => {
 adminRouter.get("/users", async (req, res) => {
   try {
     const q = req.query.q as string | undefined;
-    let query = supabase
-      .from("users")
-      .select("id, full_name, mobile, gender, plan, profile_status, created_at, profiles(city)");
+    let sql = `
+      SELECT u.id, u.full_name, u.mobile, u.gender, u.plan, u.profile_status, u.created_at, pr.city
+      FROM users u
+      LEFT JOIN profiles pr ON u.id = pr.id
+    `;
+    const params: any[] = [];
 
     if (q) {
-      query = query.or(`full_name.ilike.%${q}%,mobile.ilike.%${q}%`);
+      sql += ` WHERE u.full_name ILIKE $1 OR u.mobile ILIKE $1`;
+      params.push(`%${q}%`);
     }
 
-    const { data, error } = await query.order("created_at", { ascending: false });
-    if (error) return res.status(400).json({ message: error.message });
+    sql += ` ORDER BY u.created_at DESC`;
 
-    const formatted = (data || []).map((u: any) => ({
+    const { rows } = await db.query(sql, params);
+
+    const formatted = rows.map((u) => ({
       id: u.id,
       fullName: u.full_name,
       mobile: u.mobile,
       gender: u.gender,
-      city: u.profiles?.[0]?.city || "Not specified",
+      city: u.city || "Not specified",
       plan: u.plan,
       profileStatus: u.profile_status,
       joinedAt: u.created_at,
@@ -164,20 +86,23 @@ adminRouter.get("/users", async (req, res) => {
 // 3. Admin Single User
 adminRouter.get("/users/:id", async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("users")
-      .select("id, full_name, mobile, gender, plan, profile_status, created_at, profiles(city)")
-      .eq("id", req.params.id)
-      .single();
+    const { rows } = await db.query(
+      `SELECT u.id, u.full_name, u.mobile, u.gender, u.plan, u.profile_status, u.created_at, pr.city
+       FROM users u
+       LEFT JOIN profiles pr ON u.id = pr.id
+       WHERE u.id = $1`,
+      [req.params.id],
+    );
 
-    if (error || !data) return res.status(404).json({ message: "User not found" });
+    const data = rows[0];
+    if (!data) return res.status(404).json({ message: "User not found" });
 
     return res.json({
       id: data.id,
       fullName: data.full_name,
       mobile: data.mobile,
       gender: data.gender,
-      city: (data as any).profiles?.[0]?.city || "Not specified",
+      city: data.city || "Not specified",
       plan: data.plan,
       profileStatus: data.profile_status,
       joinedAt: data.created_at,
@@ -191,25 +116,7 @@ adminRouter.get("/users/:id", async (req, res) => {
 adminRouter.patch("/users/:id/status", async (req, res) => {
   try {
     const { status } = req.body;
-    const { error } = await supabase
-      .from("users")
-      .update({ profile_status: status })
-      .eq("id", req.params.id);
-
-    if (error) return res.status(400).json({ message: error.message });
-    return res.json({ ok: true });
-  } catch (err: any) {
-    return res.status(500).json({ message: err.message });
-  }
-});
-
-// 4b. Update user plan tier
-adminRouter.patch("/users/:id/plan", async (req, res) => {
-  try {
-    const { plan } = req.body;
-    const { error } = await supabase.from("users").update({ plan }).eq("id", req.params.id);
-
-    if (error) return res.status(400).json({ message: error.message });
+    await db.query("UPDATE users SET profile_status = $1 WHERE id = $2", [status, req.params.id]);
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
@@ -219,8 +126,7 @@ adminRouter.patch("/users/:id/plan", async (req, res) => {
 // 5. Delete user
 adminRouter.delete("/users/:id", async (req, res) => {
   try {
-    const { error } = await supabase.from("users").delete().eq("id", req.params.id);
-    if (error) return res.status(400).json({ message: error.message });
+    await db.query("DELETE FROM users WHERE id = $1", [req.params.id]);
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
@@ -230,21 +136,21 @@ adminRouter.delete("/users/:id", async (req, res) => {
 // 6. Admin Subscriptions
 adminRouter.get("/subscriptions", async (_req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("subscriptions")
-      .select("*, users!inner(full_name)")
-      .order("created_at", { ascending: false });
+    const { rows } = await db.query(
+      `SELECT s.*, u.full_name as user_name
+       FROM subscriptions s
+       JOIN users u ON s.user_id = u.id
+       ORDER BY s.created_at DESC`,
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
-    const formatted = (data || []).map((s: any) => ({
+    const formatted = rows.map((s) => ({
       planId: s.plan_id,
       tier: s.tier,
       status: s.status,
       startedAt: s.started_at,
       expiresAt: s.expires_at,
       autoRenew: s.auto_renew,
-      user: s.users?.full_name || "Unknown",
+      user: s.user_name || "Unknown",
       permissions: s.permissions || {},
     }));
 
@@ -257,13 +163,9 @@ adminRouter.get("/subscriptions", async (_req, res) => {
 // 7. Admin Packages (Plans)
 adminRouter.get("/packages", async (_req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("plans")
-      .select("*")
-      .order("price_inr", { ascending: true });
-    if (error) return res.status(400).json({ message: error.message });
+    const { rows } = await db.query("SELECT * FROM plans ORDER BY price_inr ASC");
     return res.json(
-      (data || []).map((p: any) => ({
+      rows.map((p) => ({
         id: p.id,
         tier: p.tier,
         name: p.name,
@@ -282,22 +184,23 @@ adminRouter.get("/packages", async (_req, res) => {
 adminRouter.post("/packages", async (req, res) => {
   try {
     const plan = req.body;
-    const { data, error } = await supabase
-      .from("plans")
-      .insert({
-        id: plan.id || `plan-${Date.now()}`,
-        tier: plan.tier || "silver",
-        name: plan.name,
-        price_inr: plan.priceInr || 0,
-        duration_months: plan.durationMonths || 1,
-        popular: plan.popular || false,
-        features: plan.features || [],
-        limits: plan.limits || {},
-      })
-      .select()
-      .single();
+    const { rows } = await db.query(
+      `INSERT INTO plans (id, tier, name, price_inr, duration_months, popular, features, limits)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        plan.id || `plan-${Date.now()}`,
+        plan.tier || "silver",
+        plan.name,
+        plan.priceInr || 0,
+        plan.durationMonths || 1,
+        plan.popular || false,
+        plan.features || [],
+        plan.limits || {},
+      ],
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
+    const data = rows[0];
     return res.json({
       id: data.id,
       tier: data.tier,
@@ -316,22 +219,42 @@ adminRouter.post("/packages", async (req, res) => {
 adminRouter.patch("/packages/:id", async (req, res) => {
   try {
     const plan = req.body;
-    const updates: Record<string, any> = {};
-    if (plan.name !== undefined) updates.name = plan.name;
-    if (plan.priceInr !== undefined) updates.price_inr = plan.priceInr;
-    if (plan.durationMonths !== undefined) updates.duration_months = plan.durationMonths;
-    if (plan.popular !== undefined) updates.popular = plan.popular;
-    if (plan.features !== undefined) updates.features = plan.features;
-    if (plan.limits !== undefined) updates.limits = plan.limits;
+    const setClauses: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
 
-    const { data, error } = await supabase
-      .from("plans")
-      .update(updates)
-      .eq("id", req.params.id)
-      .select()
-      .single();
+    if (plan.name !== undefined) {
+      setClauses.push(`name = $${paramIndex++}`);
+      params.push(plan.name);
+    }
+    if (plan.priceInr !== undefined) {
+      setClauses.push(`price_inr = $${paramIndex++}`);
+      params.push(plan.priceInr);
+    }
+    if (plan.durationMonths !== undefined) {
+      setClauses.push(`duration_months = $${paramIndex++}`);
+      params.push(plan.durationMonths);
+    }
+    if (plan.popular !== undefined) {
+      setClauses.push(`popular = $${paramIndex++}`);
+      params.push(plan.popular);
+    }
+    if (plan.features !== undefined) {
+      setClauses.push(`features = $${paramIndex++}`);
+      params.push(plan.features);
+    }
+    if (plan.limits !== undefined) {
+      setClauses.push(`limits = $${paramIndex++}`);
+      params.push(plan.limits);
+    }
 
-    if (error) return res.status(400).json({ message: error.message });
+    params.push(req.params.id);
+    const { rows } = await db.query(
+      `UPDATE plans SET ${setClauses.join(", ")} WHERE id = $${paramIndex} RETURNING *`,
+      params,
+    );
+
+    const data = rows[0];
     return res.json({
       id: data.id,
       tier: data.tier,
@@ -349,8 +272,7 @@ adminRouter.patch("/packages/:id", async (req, res) => {
 
 adminRouter.delete("/packages/:id", async (req, res) => {
   try {
-    const { error } = await supabase.from("plans").delete().eq("id", req.params.id);
-    if (error) return res.status(400).json({ message: error.message });
+    await db.query("DELETE FROM plans WHERE id = $1", [req.params.id]);
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
@@ -360,17 +282,19 @@ adminRouter.delete("/packages/:id", async (req, res) => {
 // 8. Admin Payments
 adminRouter.get("/payments", async (_req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*, users!inner(full_name), plans!inner(name)")
-      .order("created_at", { ascending: false });
+    const { rows } = await db.query(
+      `SELECT p.id, p.amount_inr, p.status, p.created_at, p.gateway_ref,
+              u.full_name as user_name, pl.name as plan_name
+       FROM payments p
+       JOIN users u ON p.user_id = u.id
+       JOIN plans pl ON p.plan_id = pl.id
+       ORDER BY p.created_at DESC`,
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
-    const formatted = (data || []).map((p: any) => ({
+    const formatted = rows.map((p) => ({
       id: p.id,
-      user: p.users?.full_name || "Member",
-      plan: p.plans?.name || "Subscription",
+      user: p.user_name || "Member",
+      plan: p.plan_name || "Subscription",
       amountInr: p.amount_inr,
       status: p.status,
       createdAt: p.created_at,
@@ -386,19 +310,19 @@ adminRouter.get("/payments", async (_req, res) => {
 // 9. Admin Reports
 adminRouter.get("/reports", async (_req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("reports")
-      .select(
-        "*, reported_user:users!reported_user_id(full_name), reporter:users!reported_by_id(full_name)",
-      )
-      .order("created_at", { ascending: false });
+    const { rows } = await db.query(
+      `SELECT rep.id, rep.reason, rep.created_at, rep.status,
+              ru.full_name as reported_user_name, byu.full_name as reporter_user_name
+       FROM reports rep
+       JOIN users ru ON rep.reported_user_id = ru.id
+       JOIN users byu ON rep.reported_by_id = byu.id
+       ORDER BY rep.created_at DESC`,
+    );
 
-    if (error) return res.status(400).json({ message: error.message });
-
-    const formatted = (data || []).map((r: any) => ({
+    const formatted = rows.map((r) => ({
       id: r.id,
-      reportedUser: r.reported_user?.full_name || "User",
-      reportedBy: r.reporter?.full_name || "User",
+      reportedUser: r.reported_user_name || "User",
+      reportedBy: r.reporter_user_name || "User",
       reason: r.reason,
       createdAt: r.created_at,
       status: r.status,
@@ -412,38 +336,7 @@ adminRouter.get("/reports", async (_req, res) => {
 
 adminRouter.post("/reports/:id/resolve", async (req, res) => {
   try {
-    const { error } = await supabase
-      .from("reports")
-      .update({ status: "resolved" })
-      .eq("id", req.params.id);
-    if (error) return res.status(400).json({ message: error.message });
-    return res.json({ ok: true });
-  } catch (err: any) {
-    return res.status(500).json({ message: err.message });
-  }
-});
-
-adminRouter.post("/reports/:id/block-and-resolve", async (req, res) => {
-  try {
-    const { data: report, error: fetchErr } = await supabase
-      .from("reports")
-      .select("reported_user_id")
-      .eq("id", req.params.id)
-      .single();
-
-    if (!fetchErr && report?.reported_user_id) {
-      await supabase
-        .from("users")
-        .update({ profile_status: "blocked" })
-        .eq("id", report.reported_user_id);
-    }
-
-    const { error } = await supabase
-      .from("reports")
-      .update({ status: "resolved" })
-      .eq("id", req.params.id);
-
-    if (error) return res.status(400).json({ message: error.message });
+    await db.query("UPDATE reports SET status = 'resolved' WHERE id = $1", [req.params.id]);
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });

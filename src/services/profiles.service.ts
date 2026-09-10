@@ -80,6 +80,34 @@ export const profilesService = {
     }
   },
 
+  async uploadVideo(file: File): Promise<{ url: string }> {
+    if (env.useMockApi) return delay({ url: URL.createObjectURL(file) });
+
+    try {
+      // 1. Request presigned upload URL from backend (AWS S3) for video
+      const presign = await api.post<{ uploadUrl: string; fileUrl: string; key: string }>(
+        "/profiles/me/media/presign",
+        { fileName: file.name, contentType: file.type || "video/mp4", mediaType: "video" },
+      );
+
+      // 2. Upload video file directly to AWS S3 bucket
+      const uploadRes = await fetch(presign.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "video/mp4" },
+        body: file,
+      });
+
+      if (!uploadRes.ok) throw new Error("Direct S3 video upload failed");
+
+      // 3. Register CloudFront/S3 public video URL on profile
+      await api.post("/profiles/me/videos", { videoUrl: presign.fileUrl });
+
+      return { url: presign.fileUrl };
+    } catch {
+      throw new Error("Video upload to S3 failed");
+    }
+  },
+
   async toggleShortlist(id: string): Promise<{ shortlisted: boolean }> {
     if (env.useMockApi) return delay({ shortlisted: mockState.toggleShortlist(id) }, 180);
     return api.post(`/profiles/${id}/shortlist`);

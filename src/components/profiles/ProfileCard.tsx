@@ -19,7 +19,7 @@ export function ProfileCard({
 }: ProfileCardProps) {
   if (layout === "row") {
     return (
-      <article className="flex gap-3 rounded-2xl border border-border bg-card p-3 shadow-card transition-shadow hover:shadow-raised w-full min-w-0 max-w-full overflow-hidden">
+      <article className="flex gap-3 rounded-2xl border border-amber-500/25 bg-card p-3 shadow-card hover:border-amber-400/60 hover:shadow-raised transition-all duration-300 w-full min-w-0 max-w-full overflow-hidden">
         <Link to="/app/profiles/$profileId" params={{ profileId: profile.id }} className="shrink-0">
           <img
             src={profile.photos[0]}
@@ -83,7 +83,7 @@ export function ProfileCard({
   }
 
   return (
-    <article className="group flex flex-col w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+    <article className="group flex flex-col w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-amber-500/25 bg-card shadow-sm hover:border-amber-400/70 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
       <div className="relative overflow-hidden w-full">
         <Link
           to="/app/profiles/$profileId"

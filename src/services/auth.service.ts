@@ -65,8 +65,12 @@ export const authService = {
 
   async loginWithMobile(payload: MobileLoginPayload): Promise<AuthSession> {
     if (env.useMockApi) {
-      const user = payload.mobile.endsWith("0000") ? mockAdmin : mockUser;
-      const result = session(user);
+      const isAdmin = payload.mobile.endsWith("0000");
+      const user = isAdmin ? mockAdmin : mockUser;
+      const result: AuthSession = {
+        token: isAdmin ? "mock-admin-token" : "mock-user-token",
+        user,
+      };
       tokenStore.set(result.token);
       return delay(result);
     }
@@ -82,7 +86,12 @@ export const authService = {
 
   async verifyOtp(mobile: string, otp: string): Promise<AuthSession> {
     if (env.useMockApi) {
-      const result = session(mockUser);
+      const isAdmin = mobile.endsWith("0000");
+      const user = isAdmin ? mockAdmin : mockUser;
+      const result: AuthSession = {
+        token: isAdmin ? "mock-admin-token" : "mock-user-token",
+        user,
+      };
       tokenStore.set(result.token);
       return delay(result);
     }
@@ -93,7 +102,10 @@ export const authService = {
 
   async register(payload: RegisterPayload): Promise<AuthSession> {
     if (env.useMockApi) {
-      const result = session({ ...mockUser, fullName: payload.fullName, gender: payload.gender });
+      const result: AuthSession = {
+        token: "mock-user-token",
+        user: { ...mockUser, fullName: payload.fullName, gender: payload.gender },
+      };
       tokenStore.set(result.token);
       return delay(result);
     }
@@ -113,13 +125,13 @@ export const authService = {
   },
 
   async me(): Promise<AuthUser | null> {
-    // In demo (mock) mode the sample member is always available so the UI is explorable.
     if (env.useMockApi) {
       const token = tokenStore.get();
+      if (!token) return null;
       if (token === "mock-admin-token") {
-        return delay(mockAdmin, 120);
+        return delay(mockAdmin, 80);
       }
-      return delay(mockUser, 120);
+      return delay(mockUser, 80);
     }
     if (!tokenStore.get()) return null;
     return api.get<AuthUser>("/auth/me");
@@ -127,7 +139,7 @@ export const authService = {
 
   async logout(): Promise<void> {
     tokenStore.clear();
-    if (env.useMockApi) return;
-    await api.post("/auth/logout");
+    if (env.useMockApi) return delay(undefined, 50);
+    await api.post("/auth/logout").catch(() => {});
   },
 };

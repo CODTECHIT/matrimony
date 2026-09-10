@@ -88,12 +88,12 @@ function LoginPage() {
 
   return (
     <AuthLayout>
-      <div className="space-y-3.5">
-        <GoogleButton />
+      <div className="space-y-3">
+        <GoogleButton onFallback={() => setShowPasswordForm(true)} />
         {!showPasswordForm ? (
           <button
             type="button"
-            className="flex h-13 w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-[#D92662] bg-white px-4 text-base font-semibold text-[#D92662] hover:bg-rose-50/50 shadow-xs transition-all active:scale-[0.99]"
+            className="flex h-13 w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-[#D92662] bg-white px-4 text-base font-semibold text-[#D92662] hover:bg-rose-50/50 shadow-xs transition-all active:scale-[0.99] cursor-pointer"
             onClick={() => setShowPasswordForm(true)}
           >
             <Phone className="size-4" />

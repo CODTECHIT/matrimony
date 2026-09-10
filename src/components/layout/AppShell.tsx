@@ -41,6 +41,7 @@ const sideNav = [
   { to: "/app/messages", label: "Messages", icon: MessageCircle, exact: false },
   { to: "/app/subscription", label: "Membership", icon: Crown, exact: false },
   { to: "/app/my-profile", label: "My profile", icon: User, exact: false },
+  { to: "/pricing", label: "Pricing plans", icon: Crown, exact: false },
   { to: "/app/settings", label: "Settings", icon: Settings, exact: false },
 ] as const;
 
@@ -68,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background w-full max-w-full overflow-x-hidden">
       <header
         className={cn(
-          "sticky top-0 z-40 border-b border-border/70 bg-background/95 backdrop-blur-md w-full max-w-full",
+          "sticky top-0 z-40 border-b border-amber-500/20 bg-background/95 backdrop-blur-md w-full max-w-full shadow-xs",
           isProfileDetails && "hidden lg:block",
         )}
       >
@@ -181,17 +182,28 @@ export function AppShell({ children }: { children: ReactNode }) {
                       setDrawerOpen(false);
                       navigator.clipboard?.writeText?.(window.location.origin);
                     }}
-                    className="flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
+                    className="flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left cursor-pointer"
                   >
                     <Share2 className="size-5 text-muted-foreground" />
                     <span>Invite & Earn</span>
                   </button>
 
+                  {user?.role === "admin" ? (
+                    <Link
+                      to="/admin/matrimony"
+                      onClick={() => setDrawerOpen(false)}
+                      className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                    >
+                      <Crown className="size-5 text-amber-500" />
+                      <span>Admin Portal</span>
+                    </Link>
+                  ) : null}
+
                   <div className="pt-2 border-t border-border/80">
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors text-left"
+                      className="flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors text-left cursor-pointer"
                     >
                       <LogOut className="size-5" />
                       <span>Logout</span>
@@ -213,6 +225,43 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <p className="truncate text-xs text-muted-foreground">Welcome back</p>
                 <p className="truncate text-sm font-semibold">{user?.fullName ?? "Guest"}</p>
               </div>
+
+              {/* Desktop Nav Links so public pages are always accessible */}
+              <nav
+                className="hidden lg:flex items-center gap-1 ml-4 pl-4 border-l border-border/80"
+                aria-label="Site Navigation"
+              >
+                <Link
+                  to="/"
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  Home
+                </Link>
+                <Link
+                  to="/about"
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  About
+                </Link>
+                <Link
+                  to="/pricing"
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  Pricing
+                </Link>
+                <Link
+                  to="/contact"
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  Contact
+                </Link>
+                <Link
+                  to="/app/browse"
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary-soft transition-colors"
+                >
+                  Browse Matches
+                </Link>
+              </nav>
             </div>
           </div>
 
@@ -223,7 +272,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               variant="ghost"
               size="icon"
               aria-label="Search profiles"
-              className="rounded-xl size-9 sm:size-10"
+              className="rounded-xl size-9 sm:size-10 cursor-pointer"
             >
               <Link to="/app/search">
                 <Search className="size-4.5 sm:size-5" />
@@ -235,7 +284,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               variant="ghost"
               size="icon"
               aria-label="Notifications"
-              className="relative rounded-xl size-9 sm:size-10"
+              className="relative rounded-xl size-9 sm:size-10 cursor-pointer"
             >
               <Link to="/app/interests/received">
                 <Bell className="size-4.5 sm:size-5" />
@@ -243,7 +292,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             </Button>
             <Link to="/app/my-profile" aria-label="My profile" className="ml-0.5 shrink-0">
-              <Avatar className="size-8 sm:size-9 border border-border shadow-xs">
+              <Avatar className="size-8 sm:size-9 border border-amber-400/50 shadow-xs hover:border-amber-400 transition-colors">
                 {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt="" /> : null}
                 <AvatarFallback className="bg-primary-soft text-xs font-semibold text-primary">
                   {initials}

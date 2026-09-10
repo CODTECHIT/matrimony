@@ -20,14 +20,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthContextValue["status"]>("loading");
 
   const refresh = useCallback(async () => {
-    if (!tokenStore.get()) {
-      // Demo mode: sign in the sample member so the UI can be explored without a backend.
-      if (env.useMockApi) {
-        const me = await authService.me();
-        setUser(me);
-        setStatus(me ? "authenticated" : "unauthenticated");
-        return;
-      }
+    const token = tokenStore.get();
+    if (!token) {
       setUser(null);
       setStatus("unauthenticated");
       return;
@@ -37,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(me);
       setStatus(me ? "authenticated" : "unauthenticated");
     } catch {
+      tokenStore.clear();
       setUser(null);
       setStatus("unauthenticated");
     }

@@ -12,22 +12,34 @@ import {
   Image as ImageIcon,
   Users,
   FileText,
+  Briefcase,
+  MapPin,
+  Heart,
+  Sparkles,
+  Phone,
+  Mail,
+  Home,
+  Compass,
+  Crown,
+  Moon,
 } from "lucide-react";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { profilesService } from "@/services";
 import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/app/my-profile/")({
   head: () => ({
     meta: [
-      { title: "Complete Your Profile — YFJ Matrimony" },
+      { title: "My Profile — YFJ Matrimony" },
       {
         name: "description",
-        content: "Review how your matrimony profile appears and keep your details completed.",
+        content:
+          "View your complete matrimony profile details, verification status, and checklist.",
       },
       { property: "og:title", content: "My Profile — YFJ Matrimony" },
-      { property: "og:description", content: "Complete your profile to get better matches." },
+      { property: "og:description", content: "Your full profile details and partner preferences." },
     ],
   }),
   component: MyProfilePage,
@@ -35,67 +47,44 @@ export const Route = createFileRoute("/app/my-profile/")({
 
 function Detail({ label, value }: { label: string; value?: string | undefined }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-border py-2.5 last:border-0">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-right text-sm font-medium">{value || "—"}</dd>
+    <div className="flex items-start justify-between gap-4 border-b border-border/70 py-2.5 last:border-0">
+      <dt className="text-xs sm:text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-right text-xs sm:text-sm font-semibold text-foreground">
+        {value || "—"}
+      </dd>
     </div>
   );
 }
 
 const completionItems = [
-  {
-    id: "basic",
-    title: "Basic Information",
-    icon: User,
-    status: "completed",
-    color: "text-[#C59B27]",
-  },
-  {
-    id: "about",
-    title: "About Yourself",
-    icon: FileText,
-    status: "completed",
-    color: "text-emerald-500",
-  },
-  {
-    id: "education",
-    title: "Education & Career",
-    icon: GraduationCap,
-    status: "completed",
-    color: "text-emerald-500",
-  },
-  {
-    id: "photos",
-    title: "Photos",
-    icon: ImageIcon,
-    status: "warning",
-    color: "text-amber-500",
-  },
-  {
-    id: "family",
-    title: "Family Details",
-    icon: Users,
-    status: "warning",
-    color: "text-amber-500",
-  },
+  { id: "basic", title: "Basic Information", icon: FileText, status: "completed" },
+  { id: "education", title: "Education & Career", icon: GraduationCap, status: "completed" },
+  { id: "photos", title: "Photos", icon: ImageIcon, status: "warning" },
+  { id: "family", title: "Family Details", icon: Users, status: "warning" },
 ];
 
 function MyProfilePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"completion" | "preview">("completion");
+  const [activeTab, setActiveTab] = useState<"preview" | "completion">(() => {
+    if (typeof window !== "undefined" && window.innerWidth >= 768) {
+      return "preview";
+    }
+    return "completion";
+  });
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const query = useQuery({ queryKey: ["my-profile"], queryFn: () => profilesService.myProfile() });
 
-  if (query.isPending) return <LoadingState label="Loading your profile" />;
+  if (query.isPending) return <LoadingState label="Loading your profile…" />;
   if (query.isError || !query.data) return <ErrorState onRetry={() => void query.refetch()} />;
 
   const profile = query.data;
   const completionPercentage = user?.profileCompletion ?? 75;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 pb-20">
-      {/* Top Header matching Screen 3 */}
-      <div className="flex items-center justify-between py-2">
+    <div className="mx-auto max-w-5xl space-y-6 pb-20">
+      {/* Mobile Top Header matching Screen 3 exactly */}
+      <div className="flex md:hidden items-center justify-between py-2">
         <button
           type="button"
           onClick={() => void navigate({ to: "/app" })}
@@ -119,11 +108,373 @@ function MyProfilePage() {
         </div>
       </div>
 
-      {activeTab === "completion" ? (
-        /* Screen 3 Layout: Responsive 2-column on desktop (md:grid-cols-12), stacked on mobile */
+      {/* Desktop Top Header Navigation with Gold Accents */}
+      <div className="hidden md:flex items-center justify-between py-2 border-b border-amber-500/20 pb-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/app" })}
+            className="grid size-10 place-items-center rounded-full border border-amber-500/30 bg-card text-foreground hover:bg-muted shadow-xs transition-colors cursor-pointer"
+            aria-label="Back to dashboard"
+          >
+            <ArrowLeft className="size-5" />
+          </button>
+          <div>
+            <h1 className="font-display text-2xl font-bold text-foreground">
+              {activeTab === "preview" ? "My Complete Profile" : "Profile Completion Checklist"}
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              {activeTab === "preview"
+                ? "This is how potential matches and their families see your profile"
+                : "Complete all sections to maximize high-quality match responses"}
+            </p>
+          </div>
+        </div>
+
+        {/* Tab Switcher Pills */}
+        <div className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-card p-1 shadow-xs">
+          <button
+            type="button"
+            onClick={() => setActiveTab("preview")}
+            className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === "preview"
+                ? "bg-primary text-white shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Full Profile
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("completion")}
+            className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === "completion"
+                ? "bg-primary text-white shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Checklist ({completionPercentage}%)
+          </button>
+        </div>
+      </div>
+
+      {activeTab === "preview" ? (
+        /* Full Profile View - All Sections Displayed */
+        <div className="space-y-6">
+          {/* Hero Profile Overview Card with Gold Border */}
+          <div className="rounded-3xl border-2 border-amber-400/40 bg-card p-6 shadow-xl shadow-amber-950/5 gold-glow">
+            <div className="grid gap-6 md:grid-cols-12 items-center">
+              {/* Profile Photo with Gallery Thumbnails */}
+              <div className="md:col-span-4 space-y-3">
+                <div className="relative overflow-hidden rounded-2xl aspect-[4/5] border border-amber-400/40 shadow-card">
+                  <img
+                    src={profile.photos[selectedPhotoIndex] ?? profile.photos[0]}
+                    alt={profile.fullName}
+                    className="size-full object-cover"
+                  />
+                  <div className="absolute top-3 right-3 rounded-full bg-black/60 backdrop-blur-md px-3 py-1 text-xs font-semibold text-white">
+                    {selectedPhotoIndex + 1}/{profile.photos.length || 1}
+                  </div>
+                </div>
+
+                {/* Thumbnails */}
+                {profile.photos.length > 1 ? (
+                  <div className="flex gap-2 justify-center">
+                    {profile.photos.map((photo, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => setSelectedPhotoIndex(index)}
+                        className={`size-12 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                          selectedPhotoIndex === index
+                            ? "border-primary scale-105 shadow-xs"
+                            : "border-border opacity-70 hover:opacity-100"
+                        }`}
+                      >
+                        <img src={photo} alt="" className="size-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Main Information & Quick Actions */}
+              <div className="md:col-span-8 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-display text-3xl font-bold text-foreground">
+                        {profile.fullName}
+                      </h2>
+                      {profile.verified ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-400/40 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          <BadgeCheck className="size-4 text-amber-500" /> Verified
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {profile.age} Yrs · {profile.height} · {profile.religion} ({profile.caste}) ·{" "}
+                      {profile.city}, {profile.state}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      asChild
+                      size="sm"
+                      className="rounded-full bg-primary hover:bg-primary/90 text-white font-semibold cursor-pointer"
+                    >
+                      <Link to="/app/my-profile/edit">
+                        <Pencil className="mr-1.5 size-3.5" /> Edit Profile
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full border-amber-500/40 text-amber-800 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer"
+                    >
+                      <Link to="/app/upgrade">
+                        <Crown className="mr-1.5 size-3.5 text-amber-500" /> Upgrade Plan
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Badges Overview */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-2xl border border-amber-400/30 bg-amber-500/5 p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Membership</p>
+                    <p className="font-bold text-amber-700 dark:text-amber-300 uppercase text-xs sm:text-sm mt-0.5">
+                      {user?.plan ?? "Gold Member"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Profile Status</p>
+                    <p className="font-bold text-emerald-600 text-xs sm:text-sm mt-0.5">
+                      Active & Approved
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Profile ID</p>
+                    <p className="font-bold text-foreground text-xs sm:text-sm mt-0.5">
+                      {profile.id}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Completion</p>
+                    <p className="font-bold text-primary text-xs sm:text-sm mt-0.5">
+                      {completionPercentage}%
+                    </p>
+                  </div>
+                </div>
+
+                {/* About Excerpt */}
+                <div className="rounded-2xl border border-border/80 bg-muted/30 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                    About Me
+                  </p>
+                  <p className="text-sm leading-relaxed text-foreground">
+                    {profile.about ||
+                      "No bio added yet. Tell families about your values, aspirations, and interests."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid of All Detailed Profile Sections */}
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Section: Basic Information */}
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
+                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <User className="size-4.5" />
+                </span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Basic Information
+                </h3>
+              </div>
+              <dl className="space-y-0.5">
+                <Detail label="Full Name" value={profile.fullName} />
+                <Detail label="Gender" value={profile.gender === "female" ? "Female" : "Male"} />
+                <Detail label="Age / Date of Birth" value={`${profile.age} Years`} />
+                <Detail label="Height" value={profile.height} />
+                <Detail label="Marital Status" value={profile.maritalStatus.replace(/_/g, " ")} />
+                <Detail label="Mother Tongue" value={profile.motherTongue} />
+                <Detail label="Health / Physical Status" value="Normal" />
+                <Detail label="Blood Group" value="B+" />
+              </dl>
+            </div>
+
+            {/* Section: Community & Religion */}
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
+                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Sparkles className="size-4.5" />
+                </span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Community & Religion
+                </h3>
+              </div>
+              <dl className="space-y-0.5">
+                <Detail label="Religion" value={profile.religion} />
+                <Detail label="Caste / Community" value={profile.caste} />
+                <Detail label="Sub-caste" value="Not Specified" />
+                <Detail label="Gothra / Lineage" value="Kashyapa" />
+                <Detail label="Manglik Status" value="Non-Manglik" />
+                <Detail label="Religious Values" value="Moderate Traditional" />
+              </dl>
+            </div>
+
+            {/* Section: Education & Career */}
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
+                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <GraduationCap className="size-4.5" />
+                </span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Education & Career
+                </h3>
+              </div>
+              <dl className="space-y-0.5">
+                <Detail label="Highest Qualification" value={profile.education} />
+                <Detail
+                  label="College / University"
+                  value="University of Delhi / Reputed College"
+                />
+                <Detail label="Occupation / Title" value={profile.occupation} />
+                <Detail label="Employment Sector" value={profile.employmentStatus} />
+                <Detail label="Annual Income" value={profile.incomeRange} />
+                <Detail label="Working Location" value={`${profile.city}, ${profile.state}`} />
+              </dl>
+            </div>
+
+            {/* Section: Family Background */}
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
+                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Home className="size-4.5" />
+                </span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Family Background
+                </h3>
+              </div>
+              <dl className="space-y-0.5">
+                <Detail
+                  label="Family Type"
+                  value={profile.family?.familyType ?? "Nuclear Family"}
+                />
+                <Detail label="Family Values" value={profile.family?.familyValues ?? "Moderate"} />
+                <Detail
+                  label="Father's Occupation"
+                  value={profile.family?.fatherOccupation ?? "Retired Government Officer"}
+                />
+                <Detail
+                  label="Mother's Occupation"
+                  value={profile.family?.motherOccupation ?? "Homemaker"}
+                />
+                <Detail
+                  label="Siblings"
+                  value={profile.family?.siblings ?? "1 Brother, 1 Sister"}
+                />
+                <Detail
+                  label="Native Place / Ancestral"
+                  value={`${profile.state}, ${profile.country}`}
+                />
+              </dl>
+            </div>
+
+            {/* Section: Lifestyle & Habits */}
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
+                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Heart className="size-4.5" />
+                </span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Lifestyle & Habits
+                </h3>
+              </div>
+              <dl className="space-y-0.5">
+                <Detail label="Dietary Preference" value="Vegetarian" />
+                <Detail label="Drinking Habits" value="Non-Drinker" />
+                <Detail label="Smoking Habits" value="Non-Smoker" />
+                <Detail
+                  label="Hobbies & Interests"
+                  value="Reading, Classical Music, Travel & Yoga"
+                />
+              </dl>
+            </div>
+
+            {/* Section: Horoscope & Kundali */}
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
+                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Moon className="size-4.5" />
+                </span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Horoscope & Kundali
+                </h3>
+              </div>
+              <dl className="space-y-0.5">
+                <Detail label="Rashi / Moon Sign" value="Tula (Libra)" />
+                <Detail label="Nakshatra" value="Swati" />
+                <Detail label="Gothram" value="Kashyapa" />
+                <Detail label="Manglik Status" value="Non-Manglik" />
+                <Detail label="Birth Time" value="08:45 AM (Available for Kundali matching)" />
+                <Detail label="Birth Place" value={profile.city} />
+              </dl>
+            </div>
+
+            {/* Section: Location & Contact */}
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
+                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <MapPin className="size-4.5" />
+                </span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Location & Contact
+                </h3>
+              </div>
+              <dl className="space-y-0.5">
+                <Detail label="Residing City" value={profile.city} />
+                <Detail label="State" value={profile.state} />
+                <Detail label="Country" value={profile.country} />
+                <Detail label="Citizenship" value="Indian" />
+                <Detail label="Registered Mobile" value={user?.mobile ?? "+91 98765 XXXXX"} />
+                <Detail label="Email Address" value={user?.email ?? "ananya@example.com"} />
+              </dl>
+            </div>
+
+            {/* Section: Desired Partner Preferences */}
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
+                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Compass className="size-4.5" />
+                </span>
+                <h3 className="font-display text-lg font-bold text-foreground">
+                  Partner Preferences
+                </h3>
+              </div>
+              <dl className="space-y-0.5">
+                <Detail label="Preferred Age Range" value="26 – 32 Years" />
+                <Detail label="Preferred Height" value="5ft 7in – 6ft 2in" />
+                <Detail label="Marital Status" value="Never Married" />
+                <Detail
+                  label="Religion & Caste"
+                  value={`${profile.religion} (All Communities Welcome)`}
+                />
+                <Detail label="Education" value="B.Tech, M.Tech, MBA, MS or equivalent" />
+                <Detail label="Location Preference" value="Delhi NCR, Mumbai, Bangalore, Pune" />
+              </dl>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Completion Checklist Tab matching Screen 3 exactly on mobile */
         <div className="md:grid md:grid-cols-12 md:gap-8 items-start space-y-6 md:space-y-0">
-          {/* Left Column: Circular Gauge & Continue Button */}
-          <div className="md:col-span-5 md:sticky md:top-24 rounded-3xl bg-white p-6 border border-border shadow-card flex flex-col items-center text-center">
+          {/* Left Column: Circular Gauge & Continue Button matching Screen 3 */}
+          <div className="md:col-span-5 md:sticky md:top-24 rounded-3xl bg-white dark:bg-card p-6 border border-border md:border-2 md:border-amber-400/40 shadow-card md:shadow-xl md:gold-glow flex flex-col items-center text-center">
             {/* Circular Progress Meter */}
             <div className="relative flex size-36 items-center justify-center">
               {/* SVG Circular Ring */}
@@ -173,7 +524,7 @@ function MyProfilePage() {
                 <Link
                   key={item.id}
                   to="/app/my-profile/edit"
-                  className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-xs hover:shadow-md hover:border-[#D92662]/40 transition-all cursor-pointer group"
+                  className="flex items-center justify-between rounded-2xl border border-border md:border-amber-400/30 bg-white dark:bg-card p-4 shadow-xs hover:shadow-md hover:border-[#D92662]/40 transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-3.5">
                     <span className="grid size-11 place-items-center rounded-2xl bg-rose-50/70 text-foreground group-hover:bg-rose-100/70 transition-colors">
@@ -188,56 +539,17 @@ function MyProfilePage() {
                   </div>
 
                   {item.status === "completed" ? (
-                    <span className="flex size-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <span className="flex size-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40">
                       <CheckCircle2 className="size-5 fill-emerald-500 text-white" />
                     </span>
                   ) : (
-                    <span className="flex size-7 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                    <span className="flex size-7 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-950/40">
                       <AlertCircle className="size-5 fill-amber-500 text-white" />
                     </span>
                   )}
                 </Link>
               );
             })}
-          </div>
-        </div>
-      ) : (
-        /* Profile Preview Mode: Responsive 2-column on desktop */
-        <div className="md:grid md:grid-cols-12 md:gap-8 items-start space-y-6 md:space-y-0">
-          <div className="md:col-span-5 md:sticky md:top-24 space-y-3">
-            <img
-              src={profile.photos[0]}
-              alt={profile.fullName}
-              width={640}
-              height={800}
-              className="aspect-[4/5] w-full rounded-3xl object-cover shadow-card"
-            />
-            <Button asChild variant="outline" className="w-full rounded-2xl h-12 cursor-pointer">
-              <Link to="/app/my-profile/edit">
-                <Pencil className="mr-2 size-4" /> Edit Profile & Photos
-              </Link>
-            </Button>
-          </div>
-
-          <div className="md:col-span-7 space-y-5 rounded-3xl border border-border bg-white p-6 shadow-card">
-            <div className="flex items-center gap-2">
-              <h2 className="font-display text-2xl font-bold text-foreground">
-                {profile.fullName}, {profile.age}
-              </h2>
-              {profile.verified ? <BadgeCheck className="size-5 text-[#C59B27]" /> : null}
-            </div>
-            <p className="text-sm leading-relaxed text-muted-foreground">{profile.about}</p>
-
-            <div className="pt-2 border-t border-border">
-              <h3 className="font-display text-lg font-bold text-foreground mb-2">Basic Details</h3>
-              <dl className="space-y-1">
-                <Detail label="Height" value={profile.height} />
-                <Detail label="Marital Status" value={profile.maritalStatus.replace(/_/g, " ")} />
-                <Detail label="Mother Tongue" value={profile.motherTongue} />
-                <Detail label="Religion" value={profile.religion} />
-                <Detail label="Caste" value={profile.caste} />
-              </dl>
-            </div>
           </div>
         </div>
       )}

@@ -221,13 +221,37 @@ function AdminUsersPage() {
 
           {managingUser && (
             <form onSubmit={handleSaveMemberChanges} className="space-y-4 pt-2">
-              <div className="rounded-2xl border border-border bg-muted/40 p-3 space-y-1 text-sm">
-                <p className="font-bold text-foreground">{managingUser.fullName}</p>
-                <p className="text-xs text-muted-foreground">Mobile: {managingUser.mobile}</p>
-                <p className="text-xs text-muted-foreground">
-                  City: {managingUser.city} · Gender: {managingUser.gender}
-                </p>
-                <p className="text-xs text-muted-foreground">ID: {managingUser.id}</p>
+              <div className="rounded-2xl border border-amber-400/40 bg-amber-500/5 p-4 space-y-2.5 text-sm">
+                <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                  <div>
+                    <p className="font-bold text-base text-foreground">{managingUser.fullName}</p>
+                    <p className="text-xs text-muted-foreground">ID: {managingUser.id}</p>
+                  </div>
+                  <span className="rounded-full border border-amber-400/50 bg-amber-500/20 px-2.5 py-0.5 text-xs font-bold text-amber-800 dark:text-amber-300 uppercase">
+                    {managingUser.plan} Tier
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground block">Mobile:</span>
+                    <span className="font-semibold text-foreground">{managingUser.mobile}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block">Location:</span>
+                    <span className="font-semibold text-foreground">{managingUser.city}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block">Gender:</span>
+                    <span className="font-semibold text-foreground capitalize">
+                      {managingUser.gender}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block">Registered:</span>
+                    <span className="font-semibold text-foreground">{managingUser.joinedAt}</span>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-1.5">
