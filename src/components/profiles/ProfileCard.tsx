@@ -3,6 +3,7 @@ import { Briefcase, Check, Heart, MapPin, Sparkles } from "lucide-react";
 import type { Profile } from "@/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getProfileAvatar, handleImageError } from "@/lib/images";
 
 interface ProfileCardProps {
   profile: Profile;
@@ -22,11 +23,12 @@ export function ProfileCard({
       <article className="flex gap-3 rounded-2xl border border-amber-500/25 bg-card p-3 shadow-card hover:border-amber-400/60 hover:shadow-raised transition-all duration-300 w-full min-w-0 max-w-full overflow-hidden">
         <Link to="/app/profiles/$profileId" params={{ profileId: profile.id }} className="shrink-0">
           <img
-            src={profile.photos[0]}
+            src={getProfileAvatar(profile.photos?.[0], profile.gender)}
             alt={profile.fullName}
             loading="lazy"
             width={160}
             height={200}
+            onError={(e) => handleImageError(e, profile.gender)}
             className="size-24 rounded-xl object-cover"
           />
         </Link>
@@ -91,11 +93,12 @@ export function ProfileCard({
           className="block w-full"
         >
           <img
-            src={profile.photos[0]}
+            src={getProfileAvatar(profile.photos?.[0], profile.gender)}
             alt={profile.fullName}
             loading="lazy"
             width={800}
             height={1000}
+            onError={(e) => handleImageError(e, profile.gender)}
             className="aspect-[3/3.8] w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         </Link>

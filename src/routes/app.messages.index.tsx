@@ -9,6 +9,7 @@ import { messagesService, profilesService, subscriptionsService } from "@/servic
 import { ListSkeleton, ErrorState } from "@/components/common/states";
 import type { Interest } from "@/types";
 import lockedChatImg from "@/assets/locked-chat.png";
+import { getProfileAvatar, handleImageError } from "@/lib/images";
 
 export const Route = createFileRoute("/app/messages/")({
   head: () => ({
@@ -176,8 +177,9 @@ function MessagesPage() {
                     className="flex items-center gap-3.5 min-w-0"
                   >
                     <img
-                      src={item.profile.photos[0] || "/placeholder.jpg"}
+                      src={getProfileAvatar(item.profile.photos?.[0], item.profile.gender)}
                       alt={item.profile.fullName}
+                      onError={(e) => handleImageError(e, item.profile.gender)}
                       className="size-14 rounded-full object-cover border border-border shrink-0"
                     />
                     <div className="min-w-0">
@@ -269,11 +271,12 @@ function MessagesPage() {
                       className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-4 transition-colors hover:bg-muted/60"
                     >
                       <img
-                        src={conversation.participant.photos[0] || "/placeholder.jpg"}
+                        src={getProfileAvatar(conversation.participant.photos?.[0])}
                         alt={conversation.participant.fullName}
                         loading="lazy"
                         width={56}
                         height={56}
+                        onError={(e) => handleImageError(e)}
                         className="size-14 rounded-full object-cover border border-border"
                       />
                       <div className="min-w-0">

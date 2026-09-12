@@ -3,6 +3,7 @@ import { BadgeCheck } from "lucide-react";
 import type { Interest } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getProfileAvatar, handleImageError } from "@/lib/images";
 
 const statusLabel: Record<Interest["status"], string> = {
   pending: "Awaiting reply",
@@ -32,11 +33,12 @@ export function InterestList({
             className="contents sm:flex sm:min-w-0 sm:items-center sm:gap-3"
           >
             <img
-              src={interest.profile.photos[0]}
+              src={getProfileAvatar(interest.profile.photos?.[0], interest.profile.gender)}
               alt={interest.profile.fullName}
               loading="lazy"
               width={120}
               height={120}
+              onError={(e) => handleImageError(e, interest.profile.gender)}
               className="size-16 shrink-0 rounded-xl object-cover"
             />
             <span className="min-w-0">

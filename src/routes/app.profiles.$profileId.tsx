@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingState, ErrorState } from "@/components/common/states";
 import { profilesService, subscriptionsService } from "@/services";
 import type { Profile } from "@/types";
+import { getProfileAvatar, handleImageError } from "@/lib/images";
 
 export const Route = createFileRoute("/app/profiles/$profileId")({
   head: () => ({
@@ -135,10 +136,11 @@ function ProfileDetailsPage() {
           {/* Hero Photo Carousel Card matching Screen 8 */}
           <div className="relative overflow-hidden rounded-3xl bg-card shadow-card">
             <img
-              src={profile.photos[photoIndex] ?? profile.photos[0]}
+              src={getProfileAvatar(profile.photos[photoIndex] ?? profile.photos[0], profile.gender)}
               alt={profile.fullName}
               width={800}
               height={1000}
+              onError={(e) => handleImageError(e, profile.gender)}
               className="aspect-[4/5] w-full object-cover max-h-[500px]"
             />
 
@@ -179,7 +181,12 @@ function ProfileDetailsPage() {
                       : "border-transparent opacity-70 hover:opacity-100"
                   }`}
                 >
-                  <img src={src} alt="" className="size-full object-cover" />
+                  <img
+                    src={getProfileAvatar(src, profile.gender)}
+                    alt=""
+                    onError={(e) => handleImageError(e, profile.gender)}
+                    className="size-full object-cover"
+                  />
                 </button>
               ))}
             </div>

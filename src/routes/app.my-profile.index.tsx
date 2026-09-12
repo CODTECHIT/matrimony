@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { profilesService } from "@/services";
 import { useAuth } from "@/hooks/useAuth";
+import { getProfileAvatar, handleImageError } from "@/lib/images";
 
 export const Route = createFileRoute("/app/my-profile/")({
   head: () => ({
@@ -220,8 +221,12 @@ function MyProfilePage() {
               <div className="md:col-span-4 space-y-3">
                 <div className="relative overflow-hidden rounded-2xl aspect-[4/5] border border-amber-400/40 shadow-card">
                   <img
-                    src={profile.photos[selectedPhotoIndex] ?? profile.photos[0]}
+                    src={getProfileAvatar(
+                      profile.photos[selectedPhotoIndex] ?? profile.photos[0],
+                      profile.gender,
+                    )}
                     alt={profile.fullName}
+                    onError={(e) => handleImageError(e, profile.gender)}
                     className="size-full object-cover"
                   />
                   <div className="absolute top-3 right-3 rounded-full bg-black/60 backdrop-blur-md px-3 py-1 text-xs font-semibold text-white">
@@ -243,7 +248,12 @@ function MyProfilePage() {
                             : "border-border opacity-70 hover:opacity-100"
                         }`}
                       >
-                        <img src={photo} alt="" className="size-full object-cover" />
+                        <img
+                          src={getProfileAvatar(photo, profile.gender)}
+                          alt=""
+                          onError={(e) => handleImageError(e, profile.gender)}
+                          className="size-full object-cover"
+                        />
                       </button>
                     ))}
                   </div>

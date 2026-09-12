@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { profilesService } from "@/services";
 import { useAuth } from "@/hooks/useAuth";
 import type { MaritalStatus } from "@/types";
+import { getProfileAvatar, handleImageError } from "@/lib/images";
 
 export const Route = createFileRoute("/app/my-profile/edit")({
   head: () => ({
@@ -193,11 +194,12 @@ function EditProfilePage() {
               className="relative group aspect-square rounded-2xl overflow-hidden border border-border/40 bg-muted"
             >
               <img
-                src={photo}
+                src={getProfileAvatar(photo)}
                 alt={`Profile photo ${index + 1}`}
                 loading="lazy"
                 width={200}
                 height={200}
+                onError={(e) => handleImageError(e)}
                 className="size-full object-cover"
               />
               <button

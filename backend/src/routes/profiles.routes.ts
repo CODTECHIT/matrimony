@@ -574,16 +574,9 @@ profilesRouter.post("/me/photos/upload", requireAuth, async (req, res) => {
       }
     }
 
-    // Fallback: Save to local uploads/ directory served statically by Express
+    // Fallback: Save as a portable Data URI so it renders instantly on Vercel / serverless / any host without 404s
     if (!photoUrl) {
-      const uploadDir = path.join(process.cwd(), "uploads", "photos");
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      const localFileName = `${Date.now()}-${sanitizedFileName}`;
-      const localFilePath = path.join(uploadDir, localFileName);
-      fs.writeFileSync(localFilePath, buffer);
-      photoUrl = `/uploads/photos/${localFileName}`;
+      photoUrl = `data:${contentType};base64,${cleanBase64}`;
     }
 
     // Update profiles table: append photo to array

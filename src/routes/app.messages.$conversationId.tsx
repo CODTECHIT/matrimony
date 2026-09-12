@@ -17,6 +17,7 @@ import { messagesService } from "@/services";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types";
+import { getProfileAvatar, handleImageError } from "@/lib/images";
 
 export const Route = createFileRoute("/app/messages/$conversationId")({
   head: () => ({
@@ -131,8 +132,9 @@ function ConversationPage() {
               >
                 <div className="relative shrink-0">
                   <img
-                    src={conv.participant.photos[0]}
+                    src={getProfileAvatar(conv.participant.photos?.[0])}
                     alt={conv.participant.fullName}
+                    onError={(e) => handleImageError(e)}
                     className="size-11 rounded-full object-cover border border-border"
                   />
                   <span className="absolute bottom-0 right-0 size-3 rounded-full bg-emerald-500 ring-2 ring-background" />
@@ -179,10 +181,11 @@ function ConversationPage() {
             {participant ? (
               <div className="relative shrink-0">
                 <img
-                  src={participant.photos[0]}
+                  src={getProfileAvatar(participant.photos?.[0])}
                   alt={participant.fullName}
                   width={80}
                   height={80}
+                  onError={(e) => handleImageError(e)}
                   className="size-10 sm:size-11 rounded-full object-cover border border-border"
                 />
                 <span className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-stone-900" />
