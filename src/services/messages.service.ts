@@ -36,6 +36,32 @@ export const messagesService = {
     return api.post(`/conversations/${conversationId}/messages`, { body });
   },
 
+  /** Starts or returns an existing conversation with target user */
+  async start(
+    targetUserId: string,
+    participantName = "Member",
+    participantPhotos: string[] = [],
+  ): Promise<{ id: string }> {
+    if (env.useMockApi) {
+      const existing = mockConversations.find((c) => c.participant.id === targetUserId);
+      if (existing) return delay({ id: existing.id });
+      const newConv: Conversation = {
+        id: `c-${Date.now()}`,
+        participant: {
+          id: targetUserId,
+          fullName: participantName,
+          photos: participantPhotos,
+        },
+        lastMessage: "Conversation started.",
+        lastMessageAt: new Date().toISOString(),
+        unreadCount: 0,
+      };
+      mockConversations.unshift(newConv);
+      return delay({ id: newConv.id });
+    }
+    return api.post("/conversations/start", { targetUserId });
+  },
+
   /** Returns an unsubscribe function. No-op until a realtime transport is wired. */
   subscribe(_conversationId: string, _onMessage: (message: Message) => void): () => void {
     if (!env.chatSocketUrl) return () => {};

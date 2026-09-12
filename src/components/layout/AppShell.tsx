@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   Crown,
@@ -16,12 +17,17 @@ import {
   HelpCircle,
   Share2,
   ChevronDown,
+  Info,
+  ShieldCheck,
+  FileText,
 } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/useAuth";
+import { messagesService, profilesService } from "@/services";
+import { CompleteProfileDialog } from "@/components/profile/CompleteProfileDialog";
 import { cn } from "@/lib/utils";
 
 const bottomNav = [
@@ -52,6 +58,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = routerState.location.pathname;
   const isProfileDetails = pathname.startsWith("/app/profiles/");
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const interestsReceivedQuery = useQuery({
+    queryKey: ["interests", "received"],
+    queryFn: () => profilesService.interestsReceived(),
+    refetchInterval: 10000,
+  });
+
+  const conversationsQuery = useQuery({
+    queryKey: ["conversations"],
+    queryFn: () => messagesService.conversations(),
+    refetchInterval: 10000,
+  });
+
+  const pendingInterestsCount = (interestsReceivedQuery.data ?? []).filter(
+    (i) => i.status === "pending",
+  ).length;
+
+  const unreadMessagesCount = (conversationsQuery.data ?? []).reduce(
+    (acc, c) => acc + (c.unreadCount || 0),
+    0,
+  );
 
   const initials = (user?.fullName ?? "YFJ")
     .split(" ")
@@ -134,10 +161,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <Link
                     to="/app/messages"
                     onClick={() => setDrawerOpen(false)}
-                    className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                    className="flex items-center justify-between rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
                   >
-                    <MessageCircle className="size-5 text-muted-foreground" />
-                    <span>Messages</span>
+                    <div className="flex items-center gap-3">
+                      <MessageCircle className="size-5 text-muted-foreground" />
+                      <span>Messages</span>
+                    </div>
+                    {unreadMessagesCount > 0 && (
+                      <span className="flex size-5 items-center justify-center rounded-full bg-[#D92662] text-[0.68rem] font-bold text-white">
+                        {unreadMessagesCount}
+                      </span>
+                    )}
                   </Link>
 
                   <Link
@@ -152,10 +186,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <Link
                     to="/app/interests/received"
                     onClick={() => setDrawerOpen(false)}
-                    className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                    className="flex items-center justify-between rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
                   >
-                    <Heart className="size-5 text-[#D92662]" />
-                    <span>My Interests</span>
+                    <div className="flex items-center gap-3">
+                      <Heart className="size-5 text-[#D92662]" />
+                      <span>My Interests</span>
+                    </div>
+                    {pendingInterestsCount > 0 && (
+                      <span className="flex size-5 items-center justify-center rounded-full bg-[#D92662] text-[0.68rem] font-bold text-white">
+                        {pendingInterestsCount}
+                      </span>
+                    )}
                   </Link>
 
                   <Link
@@ -168,12 +209,39 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </Link>
 
                   <Link
+                    to="/about"
+                    onClick={() => setDrawerOpen(false)}
+                    className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                  >
+                    <Info className="size-5 text-muted-foreground" />
+                    <span>About Us</span>
+                  </Link>
+
+                  <Link
                     to="/contact"
                     onClick={() => setDrawerOpen(false)}
                     className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
                   >
                     <HelpCircle className="size-5 text-muted-foreground" />
-                    <span>Help & Support</span>
+                    <span>Contact Support</span>
+                  </Link>
+
+                  <Link
+                    to="/privacy"
+                    onClick={() => setDrawerOpen(false)}
+                    className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                  >
+                    <ShieldCheck className="size-5 text-muted-foreground" />
+                    <span>Privacy Policy</span>
+                  </Link>
+
+                  <Link
+                    to="/terms"
+                    onClick={() => setDrawerOpen(false)}
+                    className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                  >
+                    <FileText className="size-5 text-muted-foreground" />
+                    <span>Terms of Service</span>
                   </Link>
 
                   <button
@@ -278,7 +346,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Search className="size-4.5 sm:size-5" />
               </Link>
             </Button>
-            {/* Bell with red dot notification badge */}
+            {/* Bell with real-time notification badge */}
             <Button
               asChild
               variant="ghost"
@@ -288,7 +356,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               <Link to="/app/interests/received">
                 <Bell className="size-4.5 sm:size-5" />
-                <span className="absolute top-2 right-2 size-2 rounded-full bg-[#D92662] ring-2 ring-background" />
+                {pendingInterestsCount > 0 && (
+                  <span className="absolute top-2 right-2 size-2 rounded-full bg-[#D92662] ring-2 ring-background animate-pulse" />
+                )}
               </Link>
             </Button>
             <Link to="/app/my-profile" aria-label="My profile" className="ml-0.5 shrink-0">
@@ -312,19 +382,33 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <aside className="hidden w-60 shrink-0 lg:block">
           <nav className="sticky top-24 space-y-1" aria-label="Member">
-            {sideNav.map(({ to, label, icon: Icon, exact }) => (
-              <Link
-                key={to}
-                to={to}
-                activeOptions={{ exact }}
-                activeProps={{ className: "bg-primary-soft text-primary font-semibold" }}
-                inactiveProps={{ className: "text-muted-foreground hover:bg-muted" }}
-                className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium transition-colors"
-              >
-                <Icon className="size-5 shrink-0" />
-                {label}
-              </Link>
-            ))}
+            {sideNav.map(({ to, label, icon: Icon, exact }) => {
+              const badgeCount =
+                to === "/app/interests/received"
+                  ? pendingInterestsCount
+                  : to === "/app/messages"
+                    ? unreadMessagesCount
+                    : 0;
+
+              return (
+                <Link
+                  key={to}
+                  to={to}
+                  activeOptions={{ exact }}
+                  activeProps={{ className: "bg-primary-soft text-primary font-semibold" }}
+                  inactiveProps={{ className: "text-muted-foreground hover:bg-muted" }}
+                  className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium transition-colors"
+                >
+                  <Icon className="size-5 shrink-0" />
+                  <span className="flex-1 truncate">{label}</span>
+                  {badgeCount > 0 && (
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#D92662] text-[0.68rem] font-bold text-white">
+                      {badgeCount}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
             <button
               type="button"
               onClick={handleLogout}
@@ -357,6 +441,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                 >
                   <div className="relative flex size-8 items-center justify-center rounded-xl transition-colors group-[.active]:bg-white/15">
                     <Icon className="size-5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]" />
+                    {to === "/app/messages" &&
+                      (unreadMessagesCount > 0 || pendingInterestsCount > 0) && (
+                        <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-white ring-1 ring-[#D92662]" />
+                      )}
                   </div>
                   <span className="leading-tight drop-shadow-xs">{label}</span>
                 </Link>
@@ -365,6 +453,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </ul>
         </nav>
       ) : null}
+
+      {/* Post-login Complete Profile Dialog */}
+      <CompleteProfileDialog />
     </div>
   );
 }

@@ -5,7 +5,6 @@
  */
 export const env = {
   apiBaseUrl: import.meta.env["VITE_API_BASE_URL"] ?? "",
-  googleClientId: import.meta.env["VITE_GOOGLE_CLIENT_ID"] ?? "",
   paymentPublicKey: import.meta.env["VITE_PAYMENT_PUBLIC_KEY"] ?? "",
   chatSocketUrl: import.meta.env["VITE_CHAT_SOCKET_URL"] ?? "",
   appName: import.meta.env["VITE_APP_NAME"] ?? "YFJ Matrimony",

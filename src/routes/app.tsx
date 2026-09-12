@@ -1,11 +1,24 @@
 import { useEffect } from "react";
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useNavigate, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { LoadingState } from "@/components/common/states";
 import { useAuth } from "@/hooks/useAuth";
-import { env } from "@/lib/env";
+import { tokenStore } from "@/lib/api-client";
 
 export const Route = createFileRoute("/app")({
+  beforeLoad: ({ location }) => {
+    if (typeof window !== "undefined") {
+      const token = tokenStore.get();
+      if (!token) {
+        throw redirect({
+          to: "/login",
+          search: {
+            redirect: location.href,
+          },
+        });
+      }
+    }
+  },
   component: AppLayout,
 });
 

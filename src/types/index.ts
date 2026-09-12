@@ -42,6 +42,7 @@ export interface Profile {
   fullName: string;
   age: number;
   gender: Gender;
+  dateOfBirth?: string;
   photos: string[];
   verified: boolean;
   about: string;
@@ -66,6 +67,8 @@ export interface Profile {
   contact?: { mobile: string; whatsapp?: string };
   /** Rule-based compatibility score (0-100%) computed for recommended matches. */
   matchScore?: number;
+  /** Percentage of profile completed (0-100%) */
+  profileCompletion?: number;
 }
 
 export interface ProfileFilters {

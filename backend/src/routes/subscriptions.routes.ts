@@ -1,8 +1,39 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { db } from "../config/db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 
 export const subscriptionsRouter = Router();
+
+/**
+ * Maintenance helper: Checks and expires subscriptions that have passed their `expires_at` date.
+ * Demotes users without active paid subscriptions back to the 'free' plan using an atomic query.
+ */
+export async function expireOutdatedSubscriptions() {
+  try {
+    await db.query(`
+      WITH expired_subs AS (
+        UPDATE subscriptions
+        SET status = 'expired'
+        WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= NOW()
+        RETURNING user_id
+      )
+      UPDATE users u
+      SET plan = 'free'
+      FROM expired_subs es
+      WHERE u.id = es.user_id
+        AND u.role != 'admin'
+        AND NOT EXISTS (
+          SELECT 1 FROM subscriptions s
+          WHERE s.user_id = es.user_id
+            AND s.status = 'active'
+            AND (s.expires_at IS NULL OR s.expires_at > NOW())
+        );
+    `);
+  } catch (err) {
+    console.error("[Subscription Expiry Engine Error]", err);
+  }
+}
 
 // 1. Get all public plans
 subscriptionsRouter.get("/plans", async (_req, res) => {
@@ -33,14 +64,18 @@ subscriptionsRouter.get("/plans", async (_req, res) => {
   }
 });
 
-// 2. Get current user's subscription
+// 2. Get current user's subscription with strict expiry enforcement
 subscriptionsRouter.get("/subscriptions/me", requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
+
+    // Run active expiry check
+    await expireOutdatedSubscriptions();
+
     const { rows } = await db.query(
       `SELECT plan_id, tier, status, started_at, expires_at, auto_renew, permissions
        FROM subscriptions
-       WHERE user_id = $1 AND status = 'active'
+       WHERE user_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
        ORDER BY created_at DESC
        LIMIT 1`,
       [userId],
@@ -73,7 +108,7 @@ subscriptionsRouter.get("/subscriptions/me", requireAuth, async (req, res) => {
         canMessage: true,
         canViewContacts: true,
         canUseAdvancedFilters: true,
-        profileHighlight: true,
+        profileHighlight: data.tier === "platinum",
       },
     });
   } catch (err: any) {
@@ -98,41 +133,101 @@ subscriptionsRouter.post("/payments/orders", requireAuth, async (req, res) => {
       orderId,
       amountInr: plan.price_inr,
       currency: "INR",
-      gatewayKey: process.env.PAYMENT_GATEWAY_KEY || "rzp_test_key",
+      gatewayKey: process.env.RAZORPAY_KEY_ID || process.env.PAYMENT_GATEWAY_KEY || "rzp_test_key",
     });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
 });
 
-// 4. Verify payment and upgrade tier
+// 4. Verify payment, validate signature, and upgrade tier with precise expiry
 subscriptionsRouter.post("/payments/verify", requireAuth, async (req, res) => {
   const client = await db.getClient();
   try {
-    await client.query("BEGIN");
-    const { planId } = req.body;
+    const { planId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     const userId = req.user!.id;
+
+    if (!planId) {
+      return res.status(400).json({ message: "Plan ID is required" });
+    }
+
+    // Enforce cryptographic Razorpay signature verification
+    const razorpaySecret = process.env.RAZORPAY_KEY_SECRET;
+    const isSimulationAllowed =
+      process.env.NODE_ENV !== "production" && process.env.ALLOW_PAYMENT_SIMULATION === "true";
+
+    if (!razorpaySecret && !isSimulationAllowed) {
+      return res.status(500).json({
+        message: "Payment gateway is not configured on this server.",
+      });
+    }
+
+    if (razorpaySecret) {
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return res.status(400).json({
+          message: "Payment verification failed: missing payment confirmation tokens",
+        });
+      }
+
+      const generatedSignature = crypto
+        .createHmac("sha256", razorpaySecret)
+        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+        .digest("hex");
+
+      const generatedBuf = Buffer.from(generatedSignature, "utf8");
+      const providedBuf = Buffer.from(String(razorpay_signature), "utf8");
+
+      if (
+        generatedBuf.length !== providedBuf.length ||
+        !crypto.timingSafeEqual(generatedBuf, providedBuf)
+      ) {
+        return res.status(400).json({ message: "Invalid payment gateway signature" });
+      }
+    } else if (isSimulationAllowed) {
+      console.warn(
+        `[SECURITY WARNING] Simulated payment verification accepted for user ${userId} (development mode only).`,
+      );
+    }
+
+    await client.query("BEGIN");
 
     const planRes = await client.query("SELECT * FROM plans WHERE id = $1", [planId]);
     const plan = planRes.rows[0];
-    const tier = plan?.tier || "gold";
+    if (!plan) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Selected plan does not exist" });
+    }
 
-    // Insert payment record
+    const tier = plan.tier || "gold";
+
+    // Expire any existing active subscriptions for this user
+    await client.query(
+      `UPDATE subscriptions SET status = 'expired' WHERE user_id = $1 AND status = 'active'`,
+      [userId],
+    );
+
+    // Record the payment
+    const paymentRef = razorpay_payment_id || `sim_${Date.now()}`;
     await client.query(
       `INSERT INTO payments (user_id, plan_id, amount_inr, status, gateway_ref)
        VALUES ($1, $2, $3, 'success', $4)`,
-      [userId, planId, plan?.price_inr || 0, req.body.razorpay_payment_id || `sim_${Date.now()}`],
+      [userId, planId, plan.price_inr || 0, paymentRef],
     );
 
-    // Calculate expiry
+    // Compute precise expiration date
+    const durationMonths = Number(plan.duration_months) || 3;
     const expiryDate = new Date();
-    expiryDate.setMonth(expiryDate.getMonth() + (plan?.duration_months || 3));
+    expiryDate.setMonth(expiryDate.getMonth() + durationMonths);
+
+    const isPlatinum = tier === "platinum";
+    const isGold = tier === "gold" || isPlatinum;
+    const isSilver = tier === "silver" || isGold;
 
     const permissions = {
-      canMessage: true,
-      canViewContacts: true,
-      canUseAdvancedFilters: true,
-      profileHighlight: true,
+      canMessage: isSilver,
+      canViewContacts: isSilver,
+      canUseAdvancedFilters: isGold,
+      profileHighlight: isPlatinum,
     };
 
     const subRes = await client.query(

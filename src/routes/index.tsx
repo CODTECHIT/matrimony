@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { AppShell } from "@/components/layout/AppShell";
-import { DashboardPage } from "@/routes/app.index";
+import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import { Button } from "@/components/ui/button";
 import { ProfileCard } from "@/components/profiles/ProfileCard";
 import { ProfileCardSkeleton, ErrorState } from "@/components/common/states";
@@ -92,7 +92,7 @@ function HomePage() {
     void navigate({
       to: "/app/browse",
       search: {
-        gender: lookingFor === "female" ? "Female" : "Male",
+        gender: lookingFor,
         minAge: Number(minAge) || 21,
         maxAge: Number(maxAge) || 28,
         religion: religion === "All" ? undefined : religion,
@@ -106,7 +106,7 @@ function HomePage() {
       {/* Mobile Experience: Dedicated Mobile Screen 9 Feed, Drawer & Bottom Tab Bar */}
       <div className="md:hidden">
         <AppShell>
-          <DashboardPage />
+          <DashboardContent />
         </AppShell>
       </div>
 
@@ -505,8 +505,8 @@ function HomePage() {
           </Link>
         </Button>
         </section>
-      </PublicLayout>
-    </div>
-  </>
+        </PublicLayout>
+      </div>
+    </>
   );
 }

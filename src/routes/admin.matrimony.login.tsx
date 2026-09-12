@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Eye, EyeOff, Lock, Shield, ShieldCheck, User } from "lucide-react";
@@ -21,7 +21,14 @@ export const Route = createFileRoute("/admin/matrimony/login")({
 
 function AdminLoginPage() {
   const navigate = useNavigate();
-  const { setSession } = useAuth();
+  const { setSession, status, user } = useAuth();
+
+  // Auto-redirect if already authenticated as admin
+  useEffect(() => {
+    if (status === "authenticated" && user?.role === "admin") {
+      void navigate({ to: "/admin/matrimony" });
+    }
+  }, [status, user, navigate]);
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);

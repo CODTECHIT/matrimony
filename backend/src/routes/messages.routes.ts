@@ -50,6 +50,18 @@ messagesRouter.get("/", requireAuth, async (req, res) => {
 messagesRouter.get("/:id/messages", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user!.id;
+
+    // Authorization check: Verify requester is a participant in this conversation (IDOR mitigation)
+    const convCheck = await db.query(
+      `SELECT id FROM conversations WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)`,
+      [id, userId],
+    );
+
+    if (convCheck.rows.length === 0) {
+      return res.status(403).json({ message: "Access denied: You are not a participant in this conversation" });
+    }
+
     const { rows } = await db.query(
       `SELECT id, conversation_id, sender_id, body, created_at, status
        FROM messages
@@ -78,7 +90,21 @@ messagesRouter.post("/:id/messages", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { body } = req.body;
-    if (!body) return res.status(400).json({ message: "Message body is required" });
+    const userId = req.user!.id;
+
+    if (!body || typeof body !== "string" || !body.trim()) {
+      return res.status(400).json({ message: "Message body is required" });
+    }
+
+    // Authorization check: Verify requester is a participant in this conversation (IDOR mitigation)
+    const convCheck = await db.query(
+      `SELECT id FROM conversations WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)`,
+      [id, userId],
+    );
+
+    if (convCheck.rows.length === 0) {
+      return res.status(403).json({ message: "Access denied: You are not a participant in this conversation" });
+    }
 
     const client = await db.getClient();
     try {
@@ -88,12 +114,12 @@ messagesRouter.post("/:id/messages", requireAuth, async (req, res) => {
         `INSERT INTO messages (conversation_id, sender_id, body, status)
          VALUES ($1, $2, $3, 'sent')
          RETURNING id, conversation_id, sender_id, body, created_at, status`,
-        [id, req.user!.id, body],
+        [id, userId, body.trim()],
       );
 
       await client.query(
         `UPDATE conversations SET last_message = $1, last_message_at = NOW() WHERE id = $2`,
-        [body, id],
+        [body.trim(), id],
       );
 
       await client.query("COMMIT");
@@ -113,6 +139,48 @@ messagesRouter.post("/:id/messages", requireAuth, async (req, res) => {
     } finally {
       client.release();
     }
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+// 4. Start or open conversation with a target user
+messagesRouter.post("/start", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+    const { targetUserId } = req.body;
+
+    if (!targetUserId || targetUserId === userId) {
+      return res.status(400).json({ message: "Valid target member ID is required" });
+    }
+
+    // Check if target user exists
+    const userCheck = await db.query("SELECT id, full_name, avatar_url FROM users WHERE id = $1", [targetUserId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Target member not found" });
+    }
+
+    // Find existing conversation
+    const existing = await db.query(
+      `SELECT id FROM conversations
+       WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1)
+       LIMIT 1`,
+      [userId, targetUserId],
+    );
+
+    if (existing.rows.length > 0) {
+      return res.json({ id: existing.rows[0].id });
+    }
+
+    // Create new conversation
+    const insertRes = await db.query(
+      `INSERT INTO conversations (user1_id, user2_id, last_message, last_message_at)
+       VALUES ($1, $2, 'Conversation started.', NOW())
+       RETURNING id`,
+      [userId, targetUserId],
+    );
+
+    return res.json({ id: insertRes.rows[0].id });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }

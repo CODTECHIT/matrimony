@@ -23,6 +23,8 @@ backend/.env.*
 !backend/.env.example
 *.pem
 *.key
+*.id_rsa
+aws/keys/
 
 # Wrangler / Cloudflare
 .wrangler/
@@ -38,3 +40,11 @@ backend/.env.*
 *.njsproj
 *.sln
 *.sw?
+
+# Agent transcripts & audit reports
+.agents/
+AUDIT_REPORT.md
+ORIGINAL_REQUEST.md
+
+# Local uploads
+backend/uploads/

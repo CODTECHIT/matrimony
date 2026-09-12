@@ -112,6 +112,7 @@ export const profileSections: FieldSection[] = [
       },
       { name: "city", label: "City", type: "text", required: true, maxLength: 60 },
       { name: "state", label: "State", type: "text", maxLength: 60 },
+      { name: "country", label: "Country", type: "text", maxLength: 60 },
     ],
   },
   {

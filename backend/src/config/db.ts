@@ -7,11 +7,18 @@ const { Pool } = pg;
 
 const isProduction = process.env.NODE_ENV === "production";
 
+const isLocalhost =
+  !process.env.DATABASE_URL ||
+  process.env.DATABASE_URL.includes("localhost") ||
+  process.env.DATABASE_URL.includes("127.0.0.1");
+
+const requiresSsl = !isLocalhost || process.env.DB_SSL === "true";
+
 // Configure PostgreSQL connection pool for AWS RDS
 const poolConfig: pg.PoolConfig = process.env.DATABASE_URL
   ? {
       connectionString: process.env.DATABASE_URL,
-      ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
     }
   : {
       host: process.env.DB_HOST || "localhost",

@@ -196,3 +196,101 @@ DROP TRIGGER IF EXISTS set_timestamp_interests ON public.interests;
 CREATE TRIGGER set_timestamp_interests
 BEFORE UPDATE ON public.interests
 FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+
+-- =============================================================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- =============================================================================
+
+-- 1. Enable RLS on all sensitive tables
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shortlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
+
+-- 2. USERS policies
+DROP POLICY IF EXISTS "Users can view active/approved profiles and own record" ON public.users;
+CREATE POLICY "Users can view active/approved profiles and own record" ON public.users
+  FOR SELECT USING (profile_status != 'blocked' OR id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can update own record" ON public.users;
+CREATE POLICY "Users can update own record" ON public.users
+  FOR UPDATE USING (id = auth.uid());
+
+-- 3. PROFILES policies
+DROP POLICY IF EXISTS "Profiles are readable by authenticated users" ON public.profiles;
+CREATE POLICY "Profiles are readable by authenticated users" ON public.profiles
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
+CREATE POLICY "Users can update own profile" ON public.profiles
+  FOR UPDATE USING (id = auth.uid());
+
+-- 4. SHORTLISTS policies
+DROP POLICY IF EXISTS "Users manage own shortlists" ON public.shortlists;
+CREATE POLICY "Users manage own shortlists" ON public.shortlists
+  FOR ALL USING (user_id = auth.uid());
+
+-- 5. INTERESTS policies
+DROP POLICY IF EXISTS "Participants can view interests" ON public.interests;
+CREATE POLICY "Participants can view interests" ON public.interests
+  FOR SELECT USING (sender_id = auth.uid() OR receiver_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can send interests" ON public.interests;
+CREATE POLICY "Users can send interests" ON public.interests
+  FOR INSERT WITH CHECK (sender_id = auth.uid());
+
+DROP POLICY IF EXISTS "Receivers can update interest status" ON public.interests;
+CREATE POLICY "Receivers can update interest status" ON public.interests
+  FOR UPDATE USING (receiver_id = auth.uid());
+
+-- 6. CONVERSATIONS policies
+DROP POLICY IF EXISTS "Participants can view and access conversations" ON public.conversations;
+CREATE POLICY "Participants can view and access conversations" ON public.conversations
+  FOR ALL USING (user1_id = auth.uid() OR user2_id = auth.uid());
+
+-- 7. MESSAGES policies
+DROP POLICY IF EXISTS "Conversation participants can read messages" ON public.messages;
+CREATE POLICY "Conversation participants can read messages" ON public.messages
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.conversations c
+      WHERE c.id = messages.conversation_id
+        AND (c.user1_id = auth.uid() OR c.user2_id = auth.uid())
+    )
+  );
+
+DROP POLICY IF EXISTS "Senders can insert their own messages" ON public.messages;
+CREATE POLICY "Senders can insert their own messages" ON public.messages
+  FOR INSERT WITH CHECK (
+    sender_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.conversations c
+      WHERE c.id = messages.conversation_id
+        AND (c.user1_id = auth.uid() OR c.user2_id = auth.uid())
+    )
+  );
+
+-- 8. PLANS policies
+DROP POLICY IF EXISTS "Plans are publicly readable" ON public.plans;
+CREATE POLICY "Plans are publicly readable" ON public.plans
+  FOR SELECT USING (true);
+
+-- 9. SUBSCRIPTIONS & PAYMENTS policies
+DROP POLICY IF EXISTS "Users can view own subscriptions" ON public.subscriptions;
+CREATE POLICY "Users can view own subscriptions" ON public.subscriptions
+  FOR SELECT USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can view own payments" ON public.payments;
+CREATE POLICY "Users can view own payments" ON public.payments
+  FOR SELECT USING (user_id = auth.uid());
+
+-- 10. REPORTS policies
+DROP POLICY IF EXISTS "Users can create abuse reports" ON public.reports;
+CREATE POLICY "Users can create abuse reports" ON public.reports
+  FOR INSERT WITH CHECK (reported_by_id = auth.uid());

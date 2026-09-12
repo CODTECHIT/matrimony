@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
     profile_completion INTEGER NOT NULL DEFAULT 20 CHECK (profile_completion BETWEEN 0 AND 100),
     plan VARCHAR(20) NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'silver', 'gold', 'platinum')),
     profile_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (profile_status IN ('pending', 'approved', 'blocked')),
+    preferences JSONB DEFAULT '{"interests": true, "messages": true, "matches": false, "photo": true, "contact": true, "online": false}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -197,3 +198,110 @@ DROP TRIGGER IF EXISTS set_timestamp_interests ON interests;
 CREATE TRIGGER set_timestamp_interests
 BEFORE UPDATE ON interests
 FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+
+-- =============================================================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- Protects data isolation across Supabase, PostgREST, and direct client queries
+-- =============================================================================
+
+-- 1. Enable RLS on all sensitive tables
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shortlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE interests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+
+-- 2. USERS policies
+DROP POLICY IF EXISTS "Users can view active/approved profiles and own record" ON users;
+CREATE POLICY "Users can view active/approved profiles and own record" ON users
+  FOR SELECT USING (profile_status != 'blocked' OR id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+
+DROP POLICY IF EXISTS "Users can update own record" ON users;
+CREATE POLICY "Users can update own record" ON users
+  FOR UPDATE USING (id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+
+-- 3. PROFILES policies
+DROP POLICY IF EXISTS "Profiles are readable by authenticated users" ON profiles;
+CREATE POLICY "Profiles are readable by authenticated users" ON profiles
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+CREATE POLICY "Users can update own profile" ON profiles
+  FOR UPDATE USING (id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+
+-- 4. SHORTLISTS policies
+DROP POLICY IF EXISTS "Users manage own shortlists" ON shortlists;
+CREATE POLICY "Users manage own shortlists" ON shortlists
+  FOR ALL USING (user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+
+-- 5. INTERESTS policies
+DROP POLICY IF EXISTS "Participants can view interests" ON interests;
+CREATE POLICY "Participants can view interests" ON interests
+  FOR SELECT USING (
+    sender_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID OR
+    receiver_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+  );
+
+DROP POLICY IF EXISTS "Users can send interests" ON interests;
+CREATE POLICY "Users can send interests" ON interests
+  FOR INSERT WITH CHECK (sender_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+
+DROP POLICY IF EXISTS "Receivers can update interest status" ON interests;
+CREATE POLICY "Receivers can update interest status" ON interests
+  FOR UPDATE USING (receiver_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+
+-- 6. CONVERSATIONS policies
+DROP POLICY IF EXISTS "Participants can view and access conversations" ON conversations;
+CREATE POLICY "Participants can view and access conversations" ON conversations
+  FOR ALL USING (
+    user1_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID OR
+    user2_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+  );
+
+-- 7. MESSAGES policies
+DROP POLICY IF EXISTS "Conversation participants can read messages" ON messages;
+CREATE POLICY "Conversation participants can read messages" ON messages
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM conversations c
+      WHERE c.id = messages.conversation_id
+        AND (c.user1_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+          OR c.user2_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID)
+    )
+  );
+
+DROP POLICY IF EXISTS "Senders can insert their own messages" ON messages;
+CREATE POLICY "Senders can insert their own messages" ON messages
+  FOR INSERT WITH CHECK (
+    sender_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+    AND EXISTS (
+      SELECT 1 FROM conversations c
+      WHERE c.id = messages.conversation_id
+        AND (c.user1_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID
+          OR c.user2_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID)
+    )
+  );
+
+-- 8. PLANS policies
+DROP POLICY IF EXISTS "Plans are publicly readable" ON plans;
+CREATE POLICY "Plans are publicly readable" ON plans
+  FOR SELECT USING (true);
+
+-- 9. SUBSCRIPTIONS & PAYMENTS policies
+DROP POLICY IF EXISTS "Users can view own subscriptions" ON subscriptions;
+CREATE POLICY "Users can view own subscriptions" ON subscriptions
+  FOR SELECT USING (user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+
+DROP POLICY IF EXISTS "Users can view own payments" ON payments;
+CREATE POLICY "Users can view own payments" ON payments
+  FOR SELECT USING (user_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);
+
+-- 10. REPORTS policies
+DROP POLICY IF EXISTS "Users can create abuse reports" ON reports;
+CREATE POLICY "Users can create abuse reports" ON reports
+  FOR INSERT WITH CHECK (reported_by_id = NULLIF(current_setting('app.current_user_id', true), '')::UUID);

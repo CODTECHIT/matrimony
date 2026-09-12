@@ -43,10 +43,12 @@ function ConversationPage() {
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: () => messagesService.conversations(),
+    refetchInterval: 8000,
   });
   const messagesQuery = useQuery({
     queryKey: ["messages", conversationId],
     queryFn: () => messagesService.messages(conversationId),
+    refetchInterval: 3000,
   });
 
   // Realtime integration point: swap messagesService.subscribe's transport only.

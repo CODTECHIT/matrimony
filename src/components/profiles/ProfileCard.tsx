@@ -43,7 +43,7 @@ export function ProfileCard({
                 </h3>
                 {profile.verified ? (
                   <span
-                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-[#C59B27] text-white shadow-xs"
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-gold text-gold-foreground shadow-xs"
                     title="Verified Profile"
                   >
                     <Check className="size-2.5 stroke-[3]" />
@@ -142,7 +142,7 @@ export function ProfileCard({
               </h3>
               {profile.verified ? (
                 <span
-                  className="flex size-3.5 sm:size-4 shrink-0 items-center justify-center rounded-full bg-[#C59B27] text-white shadow-xs"
+                  className="flex size-3.5 sm:size-4 shrink-0 items-center justify-center rounded-full bg-gold text-gold-foreground shadow-xs"
                   title="Verified Member"
                 >
                   <Check className="size-2 sm:size-2.5 stroke-[3]" />

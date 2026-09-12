@@ -60,15 +60,16 @@ function FilterSelect({
   const normalized = options.map((option) =>
     typeof option === "string" ? { value: option, label: option } : option,
   );
+  const selectId = `filter-select-${label.toLowerCase().replace(/\s+/g, "-")}`;
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Label htmlFor={selectId} className="text-xs text-muted-foreground">{label}</Label>
       <Select
         value={value ?? ANY}
         disabled={disabled ?? false}
         onValueChange={(next) => onValueChange(next === ANY ? undefined : next)}
       >
-        <SelectTrigger className="h-11 rounded-xl">
+        <SelectTrigger id={selectId} aria-label={label} className="h-11 rounded-xl">
           <SelectValue placeholder="Any" />
         </SelectTrigger>
         <SelectContent>

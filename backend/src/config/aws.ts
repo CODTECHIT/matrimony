@@ -4,9 +4,9 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const region = process.env.AWS_REGION || "ap-south-1";
-const bucketName = process.env.AWS_S3_BUCKET_NAME || "yfj-matrimony-media-prod";
-const cloudFrontDomain = (process.env.AWS_CLOUDFRONT_DOMAIN || "").replace(/\/$/, "");
+export const region = process.env.AWS_REGION || "ap-south-1";
+export const bucketName = process.env.AWS_S3_BUCKET_NAME || "yfj-matrimony-media-prod";
+export const cloudFrontDomain = (process.env.AWS_CLOUDFRONT_DOMAIN || "").replace(/\/$/, "");
 
 // If running on EC2 with IAM Instance Profile, AWS credentials are automatically resolved.
 // Otherwise, AWS_ACCESS_KEY_ID & AWS_SECRET_ACCESS_KEY from .env are used.

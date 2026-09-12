@@ -47,37 +47,30 @@ export const profilesService = {
   async uploadPhoto(file: File): Promise<{ url: string }> {
     if (env.useMockApi) return delay({ url: URL.createObjectURL(file) });
 
-    try {
-      // 1. Request presigned upload URL from backend (AWS S3)
-      const presign = await api.post<{ uploadUrl: string; fileUrl: string; key: string }>(
-        "/profiles/me/photos/presign",
-        { fileName: file.name, contentType: file.type || "image/jpeg" },
-      );
-
-      // 2. Upload file directly to AWS S3 bucket
-      const uploadRes = await fetch(presign.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "image/jpeg" },
-        body: file,
-      });
-
-      if (!uploadRes.ok) throw new Error("Direct S3 upload failed");
-
-      // 3. Register CloudFront public file URL on profile
-      await api.post("/profiles/me/photos", { photoUrl: presign.fileUrl });
-
-      return { url: presign.fileUrl };
-    } catch {
-      // Fallback to multipart direct upload
-      const body = new FormData();
-      body.append("photo", file);
-      const response = await fetch(`${env.apiBaseUrl}/profiles/me/photos`, {
-        method: "POST",
-        body,
-      });
-      if (!response.ok) throw new Error("Photo upload failed");
-      return response.json();
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error("Photo size must be less than 10MB");
     }
+
+    // Convert image file to base64 for reliable backend transmission
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("Failed to read image file"));
+      reader.readAsDataURL(file);
+    });
+
+    return api.post<{ url: string }>("/profiles/me/photos/upload", {
+      fileName: file.name,
+      contentType: file.type || "image/jpeg",
+      base64,
+    });
+  },
+
+  async deletePhoto(photoUrl: string): Promise<{ ok: boolean }> {
+    if (env.useMockApi) return delay({ ok: true });
+    return api.delete<{ ok: boolean }>("/profiles/me/photos", {
+      body: { photoUrl },
+    });
   },
 
   async uploadVideo(file: File): Promise<{ url: string }> {

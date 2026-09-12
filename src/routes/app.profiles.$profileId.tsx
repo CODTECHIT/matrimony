@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { LoadingState, ErrorState } from "@/components/common/states";
 import { profilesService, subscriptionsService } from "@/services";
+import type { Profile } from "@/types";
 
 export const Route = createFileRoute("/app/profiles/$profileId")({
   head: () => ({
@@ -74,15 +75,35 @@ function ProfileDetailsPage() {
   const canViewContact = profile.canViewContact;
 
   const shortlist = async () => {
-    const result = await profilesService.toggleShortlist(profile.id);
-    await queryClient.invalidateQueries({ queryKey: ["profile", profileId] });
-    toast.success(result.shortlisted ? "Added to your shortlist" : "Removed from shortlist");
+    queryClient.setQueryData(["profile", profileId], (old: Profile | undefined) => {
+      if (!old) return old;
+      return { ...old, shortlisted: !old.shortlisted };
+    });
+    try {
+      const result = await profilesService.toggleShortlist(profile.id);
+      await queryClient.invalidateQueries({ queryKey: ["profile", profileId] });
+      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      toast.success(result.shortlisted ? "Added to your shortlist" : "Removed from shortlist");
+    } catch {
+      await queryClient.invalidateQueries({ queryKey: ["profile", profileId] });
+      toast.error("Failed to update shortlist");
+    }
   };
 
   const sendInterest = async () => {
-    await profilesService.sendInterest(profile.id);
-    await queryClient.invalidateQueries({ queryKey: ["profile", profileId] });
-    toast.success(`Interest sent to ${profile.fullName.split(" ")[0]}`);
+    queryClient.setQueryData(["profile", profileId], (old: Profile | undefined) => {
+      if (!old) return old;
+      return { ...old, interestSent: true };
+    });
+    try {
+      await profilesService.sendInterest(profile.id);
+      await queryClient.invalidateQueries({ queryKey: ["profile", profileId] });
+      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      toast.success(`Interest sent to ${profile.fullName.split(" ")[0]}`);
+    } catch {
+      await queryClient.invalidateQueries({ queryKey: ["profile", profileId] });
+      toast.error("Failed to send interest");
+    }
   };
 
   return (
@@ -207,7 +228,7 @@ function ProfileDetailsPage() {
                 </h2>
                 {profile.verified ? (
                   <span
-                    className="flex size-5.5 items-center justify-center rounded-full bg-[#C59B27] text-white shadow-xs"
+                    className="flex size-5.5 items-center justify-center rounded-full bg-gold text-gold-foreground shadow-xs"
                     title="Verified Profile"
                   >
                     <Check className="size-3.5 stroke-[3]" />

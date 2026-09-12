@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, ChevronDown } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Mail } from "lucide-react";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DynamicField } from "@/components/forms/DynamicField";
-import { GoogleButton } from "@/components/auth/GoogleButton";
 import { profileSections } from "@/config/profile-fields";
 import { authService } from "@/services";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,7 +36,10 @@ function RegisterPage() {
   const [step, setStep] = useState(0); // 0, 1, 2
   const [fullName, setFullName] = useState("");
   const [gender, setGender] = useState<"Male" | "Female">("Male");
-  const [mobile, setMobile] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -47,9 +49,22 @@ function RegisterPage() {
 
   const validateStep1 = () => {
     const errs: Record<string, string> = {};
-    if (!fullName.trim()) errs["fullName"] = "Full name is required";
-    if (!mobile.trim() || !/^[0-9]{10}$/.test(mobile.trim())) {
-      errs["mobile"] = "Enter a valid 10-digit mobile number";
+    if (!fullName.trim()) {
+      errs["fullName"] = "Full name is required";
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email.trim()) {
+      errs["email"] = "Email address is required";
+    } else if (!emailRegex.test(email.trim())) {
+      errs["email"] = "Enter a valid email address (e.g. name@gmail.com)";
+    }
+    if (!password) {
+      errs["password"] = "Password is required";
+    } else if (password.length < 6) {
+      errs["password"] = "Password must be at least 6 characters";
+    }
+    if (password && confirmPassword !== password) {
+      errs["confirmPassword"] = "Passwords do not match";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -58,9 +73,8 @@ function RegisterPage() {
   const handleNext = async () => {
     if (step === 0) {
       if (!validateStep1()) return;
-      setValues((prev) => ({ ...prev, fullName, gender, mobile }));
+      setValues((prev) => ({ ...prev, fullName, gender, email, password }));
       setStep(1);
-      toast.success("OTP sent to +91 " + mobile);
       return;
     }
 
@@ -77,7 +91,8 @@ function RegisterPage() {
         ...values,
         fullName: fullName || values["fullName"] || "New Member",
         gender: gender.toLowerCase() as "male" | "female",
-        mobile: mobile || values["mobile"] || "",
+        email: email || values["email"] || "",
+        password: password || values["password"] || "",
       });
       setSession(session);
       toast.success("Account created successfully. Welcome to YFJ Matrimony!");
@@ -193,39 +208,88 @@ function RegisterPage() {
             </div>
           </div>
 
-          {/* Mobile Number with +91 country selector */}
+          {/* Email Address */}
           <div className="space-y-2">
-            <Label htmlFor="mobile" className="text-sm font-semibold text-foreground">
-              Mobile Number
+            <Label htmlFor="email" className="text-sm font-semibold text-foreground">
+              Gmail / Email Address
             </Label>
-            <div className="flex gap-2">
-              <div className="flex h-13 w-20 shrink-0 items-center justify-center gap-1 rounded-2xl border border-input bg-white text-base font-semibold text-foreground shadow-2xs">
-                <span>+91</span>
-                <ChevronDown className="size-3.5 text-muted-foreground" />
-              </div>
+            <div className="relative">
               <Input
-                id="mobile"
-                type="tel"
-                inputMode="numeric"
-                maxLength={10}
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
-                placeholder="Enter mobile number"
-                className="h-13 rounded-2xl text-base px-4 border-input bg-white shadow-2xs"
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors["email"]) setErrors((prev) => ({ ...prev, email: "" }));
+                }}
+                placeholder="Enter your email (e.g. name@gmail.com)"
+                className="h-13 rounded-2xl text-base px-4 pr-10 border-input bg-white shadow-2xs"
               />
+              <Mail className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground/60" />
             </div>
-            {errors["mobile"] ? (
-              <p className="text-xs text-destructive">{errors["mobile"]}</p>
+            {errors["email"] ? <p className="text-xs text-destructive">{errors["email"]}</p> : null}
+          </div>
+
+          {/* Password */}
+          <div className="space-y-2">
+            <Label htmlFor="password" className="text-sm font-semibold text-foreground">
+              Create Password
+            </Label>
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errors["password"]) setErrors((prev) => ({ ...prev, password: "" }));
+                }}
+                placeholder="Create password (min 6 characters)"
+                className="h-13 rounded-2xl text-base px-4 pr-11 border-input bg-white shadow-2xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 transition-colors cursor-pointer"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
+            {errors["password"] ? (
+              <p className="text-xs text-destructive">{errors["password"]}</p>
             ) : null}
           </div>
 
-          {/* Send OTP Action */}
+          {/* Confirm Password */}
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword" className="text-sm font-semibold text-foreground">
+              Confirm Password
+            </Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                if (errors["confirmPassword"])
+                  setErrors((prev) => ({ ...prev, confirmPassword: "" }));
+              }}
+              placeholder="Re-enter your password"
+              className="h-13 rounded-2xl text-base px-4 border-input bg-white shadow-2xs"
+            />
+            {errors["confirmPassword"] ? (
+              <p className="text-xs text-destructive">{errors["confirmPassword"]}</p>
+            ) : null}
+          </div>
+
+          {/* Continue Action */}
           <button
             type="button"
             onClick={handleNext}
-            className="w-full h-13 rounded-2xl bg-[#D92662] hover:bg-[#C2185B] text-white font-semibold text-base shadow-md shadow-rose-950/20 transition-all active:scale-[0.99] mt-2"
+            className="w-full h-13 rounded-2xl bg-[#D92662] hover:bg-[#C2185B] text-white font-semibold text-base shadow-md shadow-rose-950/20 transition-all active:scale-[0.99] mt-2 cursor-pointer"
           >
-            Send OTP
+            Continue
           </button>
         </div>
       ) : (
@@ -242,7 +306,7 @@ function RegisterPage() {
                 field={field}
                 value={values[field.name] ?? ""}
                 error={errors[field.name]}
-                onChange={(val) => setValues((prev) => ({ ...prev, [field.name]: val }))}
+                onChange={(val: string) => setValues((prev) => ({ ...prev, [field.name]: val }))}
               />
             ))}
           </div>
@@ -268,13 +332,6 @@ function RegisterPage() {
           </div>
         </div>
       )}
-
-      {step === 0 ? (
-        <div className="mt-6 space-y-3">
-          <p className="text-center text-xs uppercase tracking-[0.2em] text-muted-foreground">or</p>
-          <GoogleButton label="Sign up with Google" />
-        </div>
-      ) : null}
 
       <p className="mt-8 text-center text-sm text-muted-foreground">
         Already have an account?{" "}

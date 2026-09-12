@@ -4,16 +4,23 @@ import type { AuthSession, AuthUser } from "@/types";
 import { mockAdmin, mockUser } from "@/mocks/data";
 import { delay } from "@/mocks/adapter";
 
+export interface EmailLoginPayload {
+  email: string;
+  password: string;
+}
+
 export interface MobileLoginPayload {
-  mobile: string;
+  mobile?: string;
+  email?: string;
   password: string;
 }
 
 export interface RegisterPayload {
   fullName: string;
   gender: "male" | "female";
-  mobile: string;
+  email: string;
   password?: string;
+  mobile?: string;
   dateOfBirth?: string;
   religion?: string;
   caste?: string;
@@ -39,11 +46,6 @@ function session(user: AuthUser): AuthSession {
 }
 
 export const authService = {
-  /** Backend returns the Google OAuth redirect URL; the client never holds a secret. */
-  async googleAuthUrl(): Promise<{ url: string }> {
-    if (env.useMockApi) return delay({ url: "" });
-    return api.get("/auth/google/url");
-  },
 
   async loginAdmin(payload: AdminLoginPayload): Promise<AuthSession> {
     if (env.useMockApi) {
@@ -63,9 +65,28 @@ export const authService = {
     return result;
   },
 
-  async loginWithMobile(payload: MobileLoginPayload): Promise<AuthSession> {
+  async loginWithEmail(payload: EmailLoginPayload): Promise<AuthSession> {
     if (env.useMockApi) {
-      const isAdmin = payload.mobile.endsWith("0000");
+      const isAdmin = payload.email.trim().toLowerCase().startsWith("admin");
+      const user = isAdmin ? mockAdmin : { ...mockUser, email: payload.email };
+      const result: AuthSession = {
+        token: isAdmin ? "mock-admin-token" : "mock-user-token",
+        user,
+      };
+      tokenStore.set(result.token);
+      return delay(result);
+    }
+    const result = await api.post<AuthSession>("/auth/login", payload);
+    tokenStore.set(result.token);
+    return result;
+  },
+
+  async loginWithMobile(payload: MobileLoginPayload): Promise<AuthSession> {
+    if (payload.email) {
+      return this.loginWithEmail({ email: payload.email, password: payload.password });
+    }
+    if (env.useMockApi) {
+      const isAdmin = (payload.mobile || "").endsWith("0000");
       const user = isAdmin ? mockAdmin : mockUser;
       const result: AuthSession = {
         token: isAdmin ? "mock-admin-token" : "mock-user-token",
@@ -104,7 +125,7 @@ export const authService = {
     if (env.useMockApi) {
       const result: AuthSession = {
         token: "mock-user-token",
-        user: { ...mockUser, fullName: payload.fullName, gender: payload.gender },
+        user: { ...mockUser, fullName: payload.fullName, gender: payload.gender, email: payload.email },
       };
       tokenStore.set(result.token);
       return delay(result);
@@ -114,12 +135,17 @@ export const authService = {
     return result;
   },
 
-  async forgotPassword(mobile: string): Promise<{ sent: boolean }> {
-    if (env.useMockApi) return delay({ sent: true });
-    return api.post("/auth/password/forgot", { mobile });
+  async forgotPassword(email: string): Promise<{ sent: boolean; message?: string; devOtp?: string }> {
+    if (env.useMockApi) return delay({ sent: true, message: `Verification code sent to ${email}`, devOtp: "123456" });
+    return api.post("/auth/password/forgot", { email });
   },
 
-  async resetPassword(payload: { mobile: string; otp: string; password: string }) {
+  async verifyResetOtp(payload: { email: string; otp: string }): Promise<{ valid: boolean }> {
+    if (env.useMockApi) return delay({ valid: payload.otp === "123456" || payload.otp.length === 6 });
+    return api.post("/auth/password/verify-otp", payload);
+  },
+
+  async resetPassword(payload: { email: string; otp: string; password: string }): Promise<{ ok: boolean }> {
     if (env.useMockApi) return delay({ ok: true });
     return api.post<{ ok: boolean }>("/auth/password/reset", payload);
   },
@@ -141,5 +167,32 @@ export const authService = {
     tokenStore.clear();
     if (env.useMockApi) return delay(undefined, 50);
     await api.post("/auth/logout").catch(() => {});
+  },
+
+  async getPreferences(): Promise<Record<string, boolean>> {
+    const defaults = {
+      interests: true,
+      messages: true,
+      matches: false,
+      photo: true,
+      contact: true,
+      online: false,
+    };
+    if (env.useMockApi) {
+      if (typeof window === "undefined") return defaults;
+      const raw = window.localStorage.getItem("yfj.auth.preferences");
+      return delay(raw ? { ...defaults, ...JSON.parse(raw) } : defaults, 50);
+    }
+    return api.get<Record<string, boolean>>("/auth/preferences").catch(() => defaults);
+  },
+
+  async updatePreferences(preferences: Record<string, boolean>): Promise<Record<string, boolean>> {
+    if (env.useMockApi) {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("yfj.auth.preferences", JSON.stringify(preferences));
+      }
+      return delay(preferences, 100);
+    }
+    return api.patch<Record<string, boolean>>("/auth/preferences", preferences);
   },
 };

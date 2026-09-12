@@ -23,20 +23,20 @@ VALUES
 ON CONFLICT (id) DO UPDATE 
 SET name = EXCLUDED.name, price_inr = EXCLUDED.price_inr, features = EXCLUDED.features, limits = EXCLUDED.limits;
 
--- 2. SEED ADMIN USER (Default password: Password@123)
+-- 2. SEED ADMIN USER (Default password: Admin@YFJ2026)
 INSERT INTO users (id, full_name, email, mobile, password_hash, gender, role, profile_completion, plan, profile_status)
 VALUES
-('00000000-0000-0000-0000-000000000001', 'YFJ Admin', 'admin@yfjmatrimony.com', '+919999900000', '$2a$12$e8rV61b3K/qJdgXf620W6O1VfS2pQ0/bBf8r53Y45C5O2P1H99t1e', 'male', 'admin', 100, 'platinum', 'approved')
-ON CONFLICT (id) DO NOTHING;
+('00000000-0000-0000-0000-000000000001', 'YFJ Admin', 'admin@yfjmatrimony.com', '+919999900000', '$2b$10$o9lIRUrvQ9nCjFPm87Pl6ujvslQu4y2.s29Ar/Ihg6GCXuqL7nDRy', 'male', 'admin', 100, 'platinum', 'approved')
+ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
--- 3. SEED INITIAL SAMPLE MEMBERS
+-- 3. SEED INITIAL SAMPLE MEMBERS (Default password: Password@123)
 INSERT INTO users (id, full_name, email, mobile, password_hash, gender, role, avatar_url, profile_completion, plan, profile_status)
 VALUES
-('11111111-1111-1111-1111-111111111111', 'Ananya Iyer', 'ananya.iyer@example.com', '+919876543210', '$2a$12$e8rV61b3K/qJdgXf620W6O1VfS2pQ0/bBf8r53Y45C5O2P1H99t1e', 'female', 'user', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80', 85, 'gold', 'approved'),
-('22222222-2222-2222-2222-222222222222', 'Rohan Deshpande', 'rohan.d@example.com', '+919876543211', '$2a$12$e8rV61b3K/qJdgXf620W6O1VfS2pQ0/bBf8r53Y45C5O2P1H99t1e', 'male', 'user', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&auto=format&fit=crop&q=80', 90, 'silver', 'approved'),
-('33333333-3333-3333-3333-333333333333', 'Meera Nair', 'meera.nair@example.com', '+919876543212', '$2a$12$e8rV61b3K/qJdgXf620W6O1VfS2pQ0/bBf8r53Y45C5O2P1H99t1e', 'female', 'user', 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80', 80, 'free', 'approved'),
-('44444444-4444-4444-4444-444444444444', 'Aditya Verma', 'aditya.v@example.com', '+919876543213', '$2a$12$e8rV61b3K/qJdgXf620W6O1VfS2pQ0/bBf8r53Y45C5O2P1H99t1e', 'male', 'user', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600&auto=format&fit=crop&q=80', 95, 'platinum', 'approved')
-ON CONFLICT (id) DO NOTHING;
+('11111111-1111-1111-1111-111111111111', 'Ananya Iyer', 'ananya.iyer@example.com', '+919876543210', '$2b$10$Mofl0vVVFVKXwgxXnVr9H.KROHNvn0LgaAbFMvHiIBT1fgpt1NIE6', 'female', 'user', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80', 85, 'gold', 'approved'),
+('22222222-2222-2222-2222-222222222222', 'Rohan Deshpande', 'rohan.d@example.com', '+919876543211', '$2b$10$Mofl0vVVFVKXwgxXnVr9H.KROHNvn0LgaAbFMvHiIBT1fgpt1NIE6', 'male', 'user', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&auto=format&fit=crop&q=80', 90, 'silver', 'approved'),
+('33333333-3333-3333-3333-333333333333', 'Meera Nair', 'meera.nair@example.com', '+919876543212', '$2b$10$Mofl0vVVFVKXwgxXnVr9H.KROHNvn0LgaAbFMvHiIBT1fgpt1NIE6', 'female', 'user', 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80', 80, 'free', 'approved'),
+('44444444-4444-4444-4444-444444444444', 'Aditya Verma', 'aditya.v@example.com', '+919876543213', '$2b$10$Mofl0vVVFVKXwgxXnVr9H.KROHNvn0LgaAbFMvHiIBT1fgpt1NIE6', 'male', 'user', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600&auto=format&fit=crop&q=80', 95, 'platinum', 'approved')
+ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 INSERT INTO profiles (id, age, date_of_birth, about, height, religion, caste, mother_tongue, marital_status, education, occupation, employment_status, income_range, city, state, country, photos, videos, verified, father_occupation, mother_occupation, siblings, family_type, family_values, whatsapp)
 VALUES

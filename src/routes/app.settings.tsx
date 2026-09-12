@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Bell, LogOut, Shield, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
+import { authService } from "@/services";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
@@ -50,6 +52,13 @@ const privacyToggles = [
 function SettingsPage() {
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const preferencesQuery = useQuery({
+    queryKey: ["preferences"],
+    queryFn: () => authService.getPreferences(),
+  });
+
   const [prefs, setPrefs] = useState<Record<string, boolean>>({
     interests: true,
     messages: true,
@@ -59,10 +68,28 @@ function SettingsPage() {
     online: false,
   });
 
+  useEffect(() => {
+    if (preferencesQuery.data) {
+      setPrefs(preferencesQuery.data);
+    }
+  }, [preferencesQuery.data]);
+
+  const mutation = useMutation({
+    mutationFn: (nextPrefs: Record<string, boolean>) => authService.updatePreferences(nextPrefs),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["preferences"], data);
+      toast.success("Preferences saved");
+    },
+    onError: () => {
+      toast.error("Could not save preferences");
+    },
+  });
+
   const toggle = (id: string) => {
-    setPrefs((prev) => ({ ...prev, [id]: !prev[id] }));
-    // Backend integration point: PATCH /users/me/preferences
-    toast.success("Preference saved");
+    const nextVal = !prefs[id];
+    const updated = { ...prefs, [id]: nextVal };
+    setPrefs(updated);
+    mutation.mutate(updated);
   };
 
   const handleSignOut = async () => {

@@ -1,11 +1,67 @@
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
 import { db } from "../config/db.js";
-import { createPresignedUploadUrl } from "../config/aws.js";
-import { requireAuth } from "../middleware/auth.middleware.js";
+import {
+  createPresignedUploadUrl,
+  s3Client,
+  bucketName,
+  cloudFrontDomain,
+  region,
+} from "../config/aws.js";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { requireAuth, optionalAuth } from "../middleware/auth.middleware.js";
 
 export const profilesRouter = Router();
 
-function mapProfileRow(row: any, isShortlisted = false, isInterestSent = false) {
+export function computeProfileCompletion(row: any): number {
+  let score = 0;
+  // Basic info (name, gender, age/dob, marital status): 20%
+  if (row.full_name && (row.age || row.date_of_birth) && row.marital_status) {
+    score += 20;
+  }
+  // Photos (at least 1 photo): 20%
+  if ((row.photos && row.photos.length > 0) || row.avatar_url) {
+    score += 20;
+  }
+  // Education & Career: 20%
+  if (row.education || row.occupation) {
+    score += 20;
+  }
+  // Community / Religion: 15%
+  if (row.religion || row.caste || row.mother_tongue) {
+    score += 15;
+  }
+  // Location: 10%
+  if (row.city || row.state) {
+    score += 10;
+  }
+  // Family: 10%
+  if (
+    row.family_type ||
+    row.father_occupation ||
+    row.mother_occupation ||
+    row.siblings
+  ) {
+    score += 10;
+  }
+  // About bio: 5%
+  if (row.about && typeof row.about === "string" && row.about.trim().length > 0) {
+    score += 5;
+  }
+  return Math.min(100, Math.max(score, 20));
+}
+
+function mapProfileRow(
+  row: any,
+  isShortlisted = false,
+  isInterestSent = false,
+  canViewContact = false,
+) {
+  const completion = typeof row.profile_completion === "number" && row.profile_completion > 0
+    ? row.profile_completion
+    : computeProfileCompletion(row);
+
   return {
     id: row.id,
     fullName: row.full_name || "",
@@ -28,6 +84,12 @@ function mapProfileRow(row: any, isShortlisted = false, isInterestSent = false) 
     city: row.city || "",
     state: row.state || "",
     country: row.country || "India",
+    dateOfBirth: row.date_of_birth
+      ? (typeof row.date_of_birth === "string"
+          ? row.date_of_birth
+          : row.date_of_birth.toISOString()
+        ).split("T")[0]
+      : undefined,
     family: {
       fatherOccupation: row.father_occupation,
       motherOccupation: row.mother_occupation,
@@ -38,13 +100,42 @@ function mapProfileRow(row: any, isShortlisted = false, isInterestSent = false) 
     lastActive: row.last_active,
     shortlisted: isShortlisted,
     interestSent: isInterestSent,
-    canViewContact: false,
-    contact: row.whatsapp ? { mobile: row.mobile, whatsapp: row.whatsapp } : undefined,
+    canViewContact,
+    profileCompletion: completion,
+    contact:
+      canViewContact && (row.mobile || row.whatsapp)
+        ? { mobile: row.mobile, whatsapp: row.whatsapp || row.mobile }
+        : undefined,
   };
 }
 
-// 1. List profiles with dynamic filters
-profilesRouter.get("/", async (req, res) => {
+async function attachShortlistAndInterest(userId: string | undefined, rows: any[]) {
+  if (!userId || rows.length === 0) {
+    return rows.map((r) => mapProfileRow(r, false, false, false));
+  }
+
+  const profileIds = rows.map((r) => r.id);
+  const [shortRes, intRes] = await Promise.all([
+    db.query(
+      `SELECT target_profile_id FROM shortlists WHERE user_id = $1 AND target_profile_id = ANY($2)`,
+      [userId, profileIds],
+    ),
+    db.query(
+      `SELECT receiver_id FROM interests WHERE sender_id = $1 AND receiver_id = ANY($2)`,
+      [userId, profileIds],
+    ),
+  ]);
+
+  const shortlistedIds = new Set(shortRes.rows.map((x: any) => x.target_profile_id));
+  const interestSentIds = new Set(intRes.rows.map((x: any) => x.receiver_id));
+
+  return rows.map((r) =>
+    mapProfileRow(r, shortlistedIds.has(r.id), interestSentIds.has(r.id), false),
+  );
+}
+
+// 1. List profiles with dynamic filters (excludes own profile, prioritizes matches)
+profilesRouter.get("/", optionalAuth, async (req, res) => {
   try {
     const {
       query,
@@ -68,9 +159,24 @@ profilesRouter.get("/", async (req, res) => {
     const params: any[] = [];
     let paramIndex = 1;
 
-    if (gender) {
+    // Never show the current logged-in user in matrimonial match browse
+    if (req.user?.id) {
+      conditions.push(`pr.id != $${paramIndex++}`);
+      params.push(req.user.id);
+    }
+
+    // Filter by requested gender or default to opposite gender for the logged-in member
+    const targetGender = gender
+      ? gender.toLowerCase()
+      : req.user?.gender
+        ? req.user.gender.toLowerCase() === "male"
+          ? "female"
+          : "male"
+        : undefined;
+
+    if (targetGender) {
       conditions.push(`u.gender = $${paramIndex++}`);
-      params.push(gender.toLowerCase());
+      params.push(targetGender);
     }
     if (ageMin) {
       conditions.push(`pr.age >= $${paramIndex++}`);
@@ -126,8 +232,9 @@ profilesRouter.get("/", async (req, res) => {
 
     const { rows } = await db.query(listSql, params);
 
+    const items = await attachShortlistAndInterest(req.user?.id, rows);
     return res.json({
-      items: rows.map((r) => mapProfileRow(r)),
+      items,
       page: p,
       pageSize: size,
       total,
@@ -137,18 +244,36 @@ profilesRouter.get("/", async (req, res) => {
   }
 });
 
-// 2. Recommended profiles
-profilesRouter.get("/recommended", async (_req, res) => {
+// 2. Recommended profiles (excludes own profile, prioritizes matching gender)
+profilesRouter.get("/recommended", optionalAuth, async (req, res) => {
   try {
+    const conditions: string[] = ["u.profile_status != 'blocked'"];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (req.user?.id) {
+      conditions.push(`pr.id != $${paramIndex++}`);
+      params.push(req.user.id);
+    }
+
+    if (req.user?.gender) {
+      const targetGender = req.user.gender.toLowerCase() === "male" ? "female" : "male";
+      conditions.push(`u.gender = $${paramIndex++}`);
+      params.push(targetGender);
+    }
+
+    const whereClause = `WHERE ${conditions.join(" AND ")}`;
     const { rows } = await db.query(
       `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan
        FROM profiles pr
        JOIN users u ON pr.id = u.id
-       WHERE u.profile_status != 'blocked'
+       ${whereClause}
        ORDER BY pr.last_active DESC
        LIMIT 6`,
+      params,
     );
-    return res.json(rows.map((r) => mapProfileRow(r)));
+    const items = await attachShortlistAndInterest(req.user?.id, rows);
+    return res.json(items);
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
@@ -166,7 +291,19 @@ profilesRouter.get("/shortlisted", requireAuth, async (req, res) => {
        ORDER BY s.created_at DESC`,
       [req.user!.id],
     );
-    return res.json(rows.map((r) => mapProfileRow(r, true)));
+
+    const profileIds = rows.map((r) => r.id);
+    let interestSentIds = new Set<string>();
+    if (profileIds.length > 0) {
+      const intRes = await db.query(
+        `SELECT receiver_id FROM interests WHERE sender_id = $1 AND receiver_id = ANY($2)`,
+        [req.user!.id, profileIds],
+      );
+      interestSentIds = new Set(intRes.rows.map((x: any) => x.receiver_id));
+    }
+    return res.json(
+      rows.map((r) => mapProfileRow(r, true, interestSentIds.has(r.id), false)),
+    );
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
@@ -175,8 +312,14 @@ profilesRouter.get("/shortlisted", requireAuth, async (req, res) => {
 // 4. Current user's profile
 profilesRouter.get("/me", requireAuth, async (req, res) => {
   try {
+    // Ensure profile row exists
+    await db.query(
+      `INSERT INTO profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`,
+      [req.user!.id],
+    );
+
     const { rows } = await db.query(
-      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan
+      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.profile_completion
        FROM profiles pr
        JOIN users u ON pr.id = u.id
        WHERE pr.id = $1`,
@@ -184,7 +327,17 @@ profilesRouter.get("/me", requireAuth, async (req, res) => {
     );
 
     if (rows.length === 0) return res.status(404).json({ message: "Profile not found" });
-    return res.json(mapProfileRow(rows[0]));
+
+    const completion = computeProfileCompletion(rows[0]);
+    if (rows[0].profile_completion !== completion) {
+      await db.query(`UPDATE users SET profile_completion = $1 WHERE id = $2`, [
+        completion,
+        req.user!.id,
+      ]);
+      rows[0].profile_completion = completion;
+    }
+
+    return res.json(mapProfileRow(rows[0], false, false, true));
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
@@ -196,14 +349,24 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
     const updates = req.body;
     const allowedFields = [
       "about",
+      "height",
       "religion",
       "caste",
       "motherTongue",
+      "maritalStatus",
+      "dateOfBirth",
       "education",
       "occupation",
+      "employmentStatus",
       "incomeRange",
       "city",
       "state",
+      "country",
+      "fatherOccupation",
+      "motherOccupation",
+      "siblings",
+      "familyType",
+      "familyValues",
       "photos",
       "videos",
     ];
@@ -214,22 +377,65 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
 
     const columnMap: Record<string, string> = {
       about: "about",
+      height: "height",
       religion: "religion",
       caste: "caste",
       motherTongue: "mother_tongue",
+      maritalStatus: "marital_status",
+      dateOfBirth: "date_of_birth",
       education: "education",
       occupation: "occupation",
+      employmentStatus: "employment_status",
       incomeRange: "income_range",
       city: "city",
       state: "state",
+      country: "country",
+      fatherOccupation: "father_occupation",
+      motherOccupation: "mother_occupation",
+      siblings: "siblings",
+      familyType: "family_type",
+      familyValues: "family_values",
       photos: "photos",
       videos: "videos",
     };
 
+    // Ensure profiles record exists for this user
+    await db.query(`INSERT INTO profiles (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, [
+      req.user!.id,
+    ]);
+
     for (const key of allowedFields) {
       if (updates[key] !== undefined) {
+        let val = updates[key];
+
+        // Format marital status to match database check constraint (e.g. "Never married" -> "never_married")
+        if (key === "maritalStatus" && typeof val === "string") {
+          val = val.toLowerCase().replace(/\s+/g, "_");
+        }
+
+        // Handle date_of_birth and auto-calculate age
+        if (key === "dateOfBirth") {
+          if (!val || val === "") {
+            val = null;
+          } else {
+            const birthDate = new Date(val);
+            if (!isNaN(birthDate.getTime())) {
+              const today = new Date();
+              let calculatedAge = today.getFullYear() - birthDate.getFullYear();
+              const m = today.getMonth() - birthDate.getMonth();
+              if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                calculatedAge--;
+              }
+              if (calculatedAge >= 18 && calculatedAge <= 80) {
+                setClauses.push(`age = $${paramIndex++}`);
+                params.push(calculatedAge);
+              }
+            }
+          }
+        }
+
         setClauses.push(`${columnMap[key]} = $${paramIndex++}`);
-        params.push(updates[key]);
+        params.push(val);
       }
     }
 
@@ -241,15 +447,49 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
       );
     }
 
+    // Update full_name on users table if provided
+    if (updates.fullName && typeof updates.fullName === "string") {
+      await db.query(`UPDATE users SET full_name = $1 WHERE id = $2`, [
+        updates.fullName.trim(),
+        req.user!.id,
+      ]);
+    }
+
+    // Update gender on users table if provided
+    if (updates.gender && typeof updates.gender === "string") {
+      await db.query(`UPDATE users SET gender = $1 WHERE id = $2`, [
+        updates.gender.trim().toLowerCase(),
+        req.user!.id,
+      ]);
+    }
+
+    // Update mobile on users table if provided
+    if (updates.mobile && typeof updates.mobile === "string" && updates.mobile.trim()) {
+      await db.query(`UPDATE users SET mobile = $1 WHERE id = $2`, [
+        updates.mobile.trim(),
+        req.user!.id,
+      ]);
+    }
+
+    // Fetch updated profile
     const { rows } = await db.query(
-      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan
+      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.profile_completion
        FROM profiles pr
        JOIN users u ON pr.id = u.id
        WHERE pr.id = $1`,
       [req.user!.id],
     );
 
-    return res.json(mapProfileRow(rows[0]));
+    const r = rows[0];
+    const finalCompletion = computeProfileCompletion(r);
+
+    await db.query(`UPDATE users SET profile_completion = $1 WHERE id = $2`, [
+      finalCompletion,
+      req.user!.id,
+    ]);
+    r.profile_completion = finalCompletion;
+
+    return res.json(mapProfileRow(r, false, false, true));
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
@@ -291,7 +531,98 @@ profilesRouter.post("/me/media/presign", requireAuth, async (req, res) => {
   }
 });
 
-// 7. Save uploaded photo / video to user profile
+// 7. Direct photo upload (supports S3 with automatic fallback to local persistent disk storage)
+profilesRouter.post("/me/photos/upload", requireAuth, async (req, res) => {
+  try {
+    const { fileName, contentType = "image/jpeg", base64 } = req.body;
+    if (!base64) {
+      return res.status(400).json({ message: "Photo data (base64) is required" });
+    }
+
+    // Strip data URI header if present
+    const cleanBase64 = base64.replace(/^data:[^;]+;base64,/, "");
+    const buffer = Buffer.from(cleanBase64, "base64");
+
+    if (buffer.length > 10 * 1024 * 1024) {
+      return res.status(400).json({ message: "Photo size exceeds the 10MB limit." });
+    }
+
+    const sanitizedFileName = (fileName || "photo.jpg").replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `profiles/${req.user!.id}/photos/${Date.now()}-${sanitizedFileName}`;
+    let photoUrl = "";
+
+    // Attempt direct S3 upload if credentials exist
+    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+      try {
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+          }),
+        );
+        photoUrl = cloudFrontDomain
+          ? `${cloudFrontDomain}/${key}`
+          : `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
+      } catch (s3Err: any) {
+        console.warn(
+          "[Photo Upload Warning] S3 upload failed:",
+          s3Err.message,
+          "Falling back to local disk storage.",
+        );
+      }
+    }
+
+    // Fallback: Save to local uploads/ directory served statically by Express
+    if (!photoUrl) {
+      const uploadDir = path.join(process.cwd(), "uploads", "photos");
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      const localFileName = `${Date.now()}-${sanitizedFileName}`;
+      const localFilePath = path.join(uploadDir, localFileName);
+      fs.writeFileSync(localFilePath, buffer);
+      photoUrl = `/uploads/photos/${localFileName}`;
+    }
+
+    // Update profiles table: append photo to array
+    await db.query(`UPDATE profiles SET photos = array_append(photos, $1) WHERE id = $2`, [
+      photoUrl,
+      req.user!.id,
+    ]);
+
+    // Also update users.avatar_url if none exists yet
+    await db.query(`UPDATE users SET avatar_url = COALESCE(avatar_url, $1) WHERE id = $2`, [
+      photoUrl,
+      req.user!.id,
+    ]);
+
+    return res.json({ url: photoUrl });
+  } catch (err: any) {
+    console.error("[Photo Upload Error]", err);
+    return res.status(500).json({ message: err.message || "Failed to process photo upload" });
+  }
+});
+
+// Delete photo from profile
+profilesRouter.delete("/me/photos", requireAuth, async (req, res) => {
+  try {
+    const { photoUrl } = req.body;
+    if (!photoUrl) return res.status(400).json({ message: "photoUrl required" });
+
+    await db.query(`UPDATE profiles SET photos = array_remove(photos, $1) WHERE id = $2`, [
+      photoUrl,
+      req.user!.id,
+    ]);
+
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+// 8. Save uploaded photo / video to user profile (URL registration)
 profilesRouter.post("/me/photos", requireAuth, async (req, res) => {
   try {
     const { photoUrl } = req.body;
@@ -369,8 +700,8 @@ profilesRouter.post("/:id/interest", requireAuth, async (req, res) => {
   }
 });
 
-// 10. Get single profile by ID
-profilesRouter.get("/:id", async (req, res) => {
+// 10. Get single profile by ID with authorized contact unlocking
+profilesRouter.get("/:id", optionalAuth, async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan
@@ -381,7 +712,52 @@ profilesRouter.get("/:id", async (req, res) => {
     );
 
     if (rows.length === 0) return res.status(404).json({ message: "Profile not found" });
-    return res.json(mapProfileRow(rows[0]));
+
+    let canViewContact = false;
+    let isShortlisted = false;
+    let isInterestSent = false;
+
+    if (req.user) {
+      const viewerId = req.user.id;
+      const targetId = req.params.id;
+
+      // 1. Viewing own profile or admin viewer
+      if (viewerId === targetId || req.user.role === "admin") {
+        canViewContact = true;
+      } else {
+        // 2. Check active subscription with contact view permissions
+        const subRes = await db.query(
+          `SELECT permissions FROM subscriptions
+           WHERE user_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
+           ORDER BY created_at DESC LIMIT 1`,
+          [viewerId],
+        );
+
+        if (subRes.rows.length > 0) {
+          const perms = subRes.rows[0].permissions;
+          if (perms && (perms.canViewContacts === true || perms.canViewContacts === "true")) {
+            canViewContact = true;
+          }
+        }
+      }
+
+      // Check shortlist and interest status
+      const [shortRes, intRes] = await Promise.all([
+        db.query(
+          "SELECT id FROM shortlists WHERE user_id = $1 AND target_profile_id = $2 LIMIT 1",
+          [viewerId, targetId],
+        ),
+        db.query("SELECT id FROM interests WHERE sender_id = $1 AND receiver_id = $2 LIMIT 1", [
+          viewerId,
+          targetId,
+        ]),
+      ]);
+
+      isShortlisted = shortRes.rows.length > 0;
+      isInterestSent = intRes.rows.length > 0;
+    }
+
+    return res.json(mapProfileRow(rows[0], isShortlisted, isInterestSent, canViewContact));
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }

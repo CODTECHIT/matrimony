@@ -1,12 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
+const JWT_SECRET = process.env.JWT_SECRET || "yfj_matrimony_secret_jwt_key_2026_dev";
 
 export interface AuthenticatedUser {
   id: string;
   role: "user" | "admin";
   plan: string;
+  gender?: string;
 }
 
 declare global {

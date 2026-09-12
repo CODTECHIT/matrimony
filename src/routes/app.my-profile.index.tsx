@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -56,15 +56,8 @@ function Detail({ label, value }: { label: string; value?: string | undefined })
   );
 }
 
-const completionItems = [
-  { id: "basic", title: "Basic Information", icon: FileText, status: "completed" },
-  { id: "education", title: "Education & Career", icon: GraduationCap, status: "completed" },
-  { id: "photos", title: "Photos", icon: ImageIcon, status: "warning" },
-  { id: "family", title: "Family Details", icon: Users, status: "warning" },
-];
-
 function MyProfilePage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"preview" | "completion">(() => {
     if (typeof window !== "undefined" && window.innerWidth >= 768) {
@@ -75,11 +68,70 @@ function MyProfilePage() {
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const query = useQuery({ queryKey: ["my-profile"], queryFn: () => profilesService.myProfile() });
 
+  useEffect(() => {
+    if (
+      query.data &&
+      user &&
+      typeof query.data.profileCompletion === "number" &&
+      user.profileCompletion !== query.data.profileCompletion
+    ) {
+      void refresh();
+    }
+  }, [query.data, user, refresh]);
+
   if (query.isPending) return <LoadingState label="Loading your profile…" />;
   if (query.isError || !query.data) return <ErrorState onRetry={() => void query.refetch()} />;
 
   const profile = query.data;
-  const completionPercentage = user?.profileCompletion ?? 75;
+
+  const hasBasic = Boolean(profile.fullName && (profile.age || profile.dateOfBirth) && profile.maritalStatus);
+  const hasCommunity = Boolean(profile.religion || profile.motherTongue);
+  const hasEducation = Boolean(profile.education || profile.occupation);
+  const hasPhotos = Boolean(profile.photos && profile.photos.length >= 1);
+  const hasFamily = Boolean(
+    profile.family &&
+    (profile.family.familyType ||
+      profile.family.fatherOccupation ||
+      profile.family.motherOccupation ||
+      profile.family.siblings),
+  );
+
+  const completionItems = [
+    {
+      id: "basic",
+      title: "Basic Information",
+      icon: FileText,
+      status: hasBasic ? ("completed" as const) : ("warning" as const),
+    },
+    {
+      id: "community",
+      title: "Community & Religion",
+      icon: Sparkles,
+      status: hasCommunity ? ("completed" as const) : ("warning" as const),
+    },
+    {
+      id: "education",
+      title: "Education & Career",
+      icon: GraduationCap,
+      status: hasEducation ? ("completed" as const) : ("warning" as const),
+    },
+    {
+      id: "photos",
+      title: "Photos",
+      icon: ImageIcon,
+      status: hasPhotos ? ("completed" as const) : ("warning" as const),
+    },
+    {
+      id: "family",
+      title: "Family Details",
+      icon: Users,
+      status: hasFamily ? ("completed" as const) : ("warning" as const),
+    },
+  ];
+
+  const completedCount = [hasBasic, hasCommunity, hasEducation, hasPhotos, hasFamily].filter(Boolean).length;
+  const calculatedPercentage = Math.round((completedCount / 5) * 100);
+  const completionPercentage = profile.profileCompletion ?? calculatedPercentage;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-20">
@@ -283,190 +335,206 @@ function MyProfilePage() {
             </div>
           </div>
 
-          {/* Grid of All Detailed Profile Sections */}
+          {/* Grid of Authentic Profile Sections matching user input */}
           <div className="grid gap-6 md:grid-cols-2">
             {/* Section: Basic Information */}
             <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
-                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <User className="size-4.5" />
-                </span>
-                <h3 className="font-display text-lg font-bold text-foreground">
-                  Basic Information
-                </h3>
+              <div className="flex items-center justify-between border-b border-border/80 pb-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <User className="size-4.5" />
+                  </span>
+                  <h3 className="font-display text-lg font-bold text-foreground">
+                    Basic Information
+                  </h3>
+                </div>
+                <Link
+                  to="/app/my-profile/edit"
+                  hash="basic"
+                  className="text-xs font-semibold text-[#D92662] hover:underline flex items-center gap-1"
+                >
+                  <Pencil className="size-3" /> Edit
+                </Link>
               </div>
               <dl className="space-y-0.5">
-                <Detail label="Full Name" value={profile.fullName} />
-                <Detail label="Gender" value={profile.gender === "female" ? "Female" : "Male"} />
-                <Detail label="Age / Date of Birth" value={`${profile.age} Years`} />
-                <Detail label="Height" value={profile.height} />
-                <Detail label="Marital Status" value={profile.maritalStatus.replace(/_/g, " ")} />
-                <Detail label="Mother Tongue" value={profile.motherTongue} />
-                <Detail label="Health / Physical Status" value="Normal" />
-                <Detail label="Blood Group" value="B+" />
+                <Detail label="Full Name" value={profile.fullName || user?.fullName} />
+                <Detail
+                  label="Gender"
+                  value={
+                    profile.gender
+                      ? profile.gender.toLowerCase() === "female"
+                        ? "Female"
+                        : "Male"
+                      : "Not specified"
+                  }
+                />
+                <Detail
+                  label="Age / Date of Birth"
+                  value={profile.age ? `${profile.age} Years` : "Not specified"}
+                />
+                <Detail label="Height" value={profile.height || "Not specified"} />
+                <Detail
+                  label="Marital Status"
+                  value={
+                    profile.maritalStatus
+                      ? profile.maritalStatus
+                          .replace(/_/g, " ")
+                          .replace(/\b\w/g, (c) => c.toUpperCase())
+                      : "Not specified"
+                  }
+                />
+                <Detail label="Mother Tongue" value={profile.motherTongue || "Not specified"} />
               </dl>
             </div>
 
             {/* Section: Community & Religion */}
             <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
-                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <Sparkles className="size-4.5" />
-                </span>
-                <h3 className="font-display text-lg font-bold text-foreground">
-                  Community & Religion
-                </h3>
+              <div className="flex items-center justify-between border-b border-border/80 pb-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <Sparkles className="size-4.5" />
+                  </span>
+                  <h3 className="font-display text-lg font-bold text-foreground">
+                    Community & Religion
+                  </h3>
+                </div>
+                <Link
+                  to="/app/my-profile/edit"
+                  hash="community"
+                  className="text-xs font-semibold text-[#D92662] hover:underline flex items-center gap-1"
+                >
+                  <Pencil className="size-3" /> Edit
+                </Link>
               </div>
               <dl className="space-y-0.5">
-                <Detail label="Religion" value={profile.religion} />
-                <Detail label="Caste / Community" value={profile.caste} />
-                <Detail label="Sub-caste" value="Not Specified" />
-                <Detail label="Gothra / Lineage" value="Kashyapa" />
-                <Detail label="Manglik Status" value="Non-Manglik" />
-                <Detail label="Religious Values" value="Moderate Traditional" />
+                <Detail label="Religion" value={profile.religion || "Not specified"} />
+                <Detail label="Caste / Community" value={profile.caste || "Not specified"} />
+                <Detail label="Mother Tongue" value={profile.motherTongue || "Not specified"} />
               </dl>
             </div>
 
             {/* Section: Education & Career */}
             <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
-                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <GraduationCap className="size-4.5" />
-                </span>
-                <h3 className="font-display text-lg font-bold text-foreground">
-                  Education & Career
-                </h3>
+              <div className="flex items-center justify-between border-b border-border/80 pb-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <GraduationCap className="size-4.5" />
+                  </span>
+                  <h3 className="font-display text-lg font-bold text-foreground">
+                    Education & Career
+                  </h3>
+                </div>
+                <Link
+                  to="/app/my-profile/edit"
+                  hash="career"
+                  className="text-xs font-semibold text-[#D92662] hover:underline flex items-center gap-1"
+                >
+                  <Pencil className="size-3" /> Edit
+                </Link>
               </div>
               <dl className="space-y-0.5">
-                <Detail label="Highest Qualification" value={profile.education} />
                 <Detail
-                  label="College / University"
-                  value="University of Delhi / Reputed College"
+                  label="Highest Qualification"
+                  value={profile.education || "Not specified"}
                 />
-                <Detail label="Occupation / Title" value={profile.occupation} />
-                <Detail label="Employment Sector" value={profile.employmentStatus} />
-                <Detail label="Annual Income" value={profile.incomeRange} />
-                <Detail label="Working Location" value={`${profile.city}, ${profile.state}`} />
+                <Detail label="Occupation / Title" value={profile.occupation || "Not specified"} />
+                <Detail
+                  label="Employment Sector"
+                  value={profile.employmentStatus || "Not specified"}
+                />
+                <Detail label="Annual Income" value={profile.incomeRange || "Not specified"} />
+                <Detail
+                  label="Working Location"
+                  value={
+                    profile.city
+                      ? profile.state
+                        ? `${profile.city}, ${profile.state}`
+                        : profile.city
+                      : "Not specified"
+                  }
+                />
               </dl>
             </div>
 
             {/* Section: Family Background */}
             <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
-                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <Home className="size-4.5" />
-                </span>
-                <h3 className="font-display text-lg font-bold text-foreground">
-                  Family Background
-                </h3>
+              <div className="flex items-center justify-between border-b border-border/80 pb-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <Home className="size-4.5" />
+                  </span>
+                  <h3 className="font-display text-lg font-bold text-foreground">
+                    Family Background
+                  </h3>
+                </div>
+                <Link
+                  to="/app/my-profile/edit"
+                  hash="about"
+                  className="text-xs font-semibold text-[#D92662] hover:underline flex items-center gap-1"
+                >
+                  <Pencil className="size-3" /> Edit
+                </Link>
               </div>
               <dl className="space-y-0.5">
+                <Detail label="Family Type" value={profile.family?.familyType || "Not specified"} />
                 <Detail
-                  label="Family Type"
-                  value={profile.family?.familyType ?? "Nuclear Family"}
+                  label="Family Values"
+                  value={profile.family?.familyValues || "Not specified"}
                 />
-                <Detail label="Family Values" value={profile.family?.familyValues ?? "Moderate"} />
                 <Detail
                   label="Father's Occupation"
-                  value={profile.family?.fatherOccupation ?? "Retired Government Officer"}
+                  value={profile.family?.fatherOccupation || "Not specified"}
                 />
                 <Detail
                   label="Mother's Occupation"
-                  value={profile.family?.motherOccupation ?? "Homemaker"}
+                  value={profile.family?.motherOccupation || "Not specified"}
                 />
+                <Detail label="Siblings" value={profile.family?.siblings || "Not specified"} />
                 <Detail
-                  label="Siblings"
-                  value={profile.family?.siblings ?? "1 Brother, 1 Sister"}
+                  label="Native Place / Location"
+                  value={
+                    profile.state
+                      ? `${profile.state}, ${profile.country || "India"}`
+                      : profile.country || "Not specified"
+                  }
                 />
-                <Detail
-                  label="Native Place / Ancestral"
-                  value={`${profile.state}, ${profile.country}`}
-                />
-              </dl>
-            </div>
-
-            {/* Section: Lifestyle & Habits */}
-            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
-                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <Heart className="size-4.5" />
-                </span>
-                <h3 className="font-display text-lg font-bold text-foreground">
-                  Lifestyle & Habits
-                </h3>
-              </div>
-              <dl className="space-y-0.5">
-                <Detail label="Dietary Preference" value="Vegetarian" />
-                <Detail label="Drinking Habits" value="Non-Drinker" />
-                <Detail label="Smoking Habits" value="Non-Smoker" />
-                <Detail
-                  label="Hobbies & Interests"
-                  value="Reading, Classical Music, Travel & Yoga"
-                />
-              </dl>
-            </div>
-
-            {/* Section: Horoscope & Kundali */}
-            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
-                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <Moon className="size-4.5" />
-                </span>
-                <h3 className="font-display text-lg font-bold text-foreground">
-                  Horoscope & Kundali
-                </h3>
-              </div>
-              <dl className="space-y-0.5">
-                <Detail label="Rashi / Moon Sign" value="Tula (Libra)" />
-                <Detail label="Nakshatra" value="Swati" />
-                <Detail label="Gothram" value="Kashyapa" />
-                <Detail label="Manglik Status" value="Non-Manglik" />
-                <Detail label="Birth Time" value="08:45 AM (Available for Kundali matching)" />
-                <Detail label="Birth Place" value={profile.city} />
               </dl>
             </div>
 
             {/* Section: Location & Contact */}
-            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
-                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <MapPin className="size-4.5" />
-                </span>
-                <h3 className="font-display text-lg font-bold text-foreground">
-                  Location & Contact
-                </h3>
+            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm md:col-span-2">
+              <div className="flex items-center justify-between border-b border-border/80 pb-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <MapPin className="size-4.5" />
+                  </span>
+                  <h3 className="font-display text-lg font-bold text-foreground">
+                    Location & Contact
+                  </h3>
+                </div>
+                <Link
+                  to="/app/my-profile/edit"
+                  hash="career"
+                  className="text-xs font-semibold text-[#D92662] hover:underline flex items-center gap-1"
+                >
+                  <Pencil className="size-3" /> Edit
+                </Link>
               </div>
-              <dl className="space-y-0.5">
-                <Detail label="Residing City" value={profile.city} />
-                <Detail label="State" value={profile.state} />
-                <Detail label="Country" value={profile.country} />
-                <Detail label="Citizenship" value="Indian" />
-                <Detail label="Registered Mobile" value={user?.mobile ?? "+91 98765 XXXXX"} />
-                <Detail label="Email Address" value={user?.email ?? "ananya@example.com"} />
-              </dl>
-            </div>
-
-            {/* Section: Desired Partner Preferences */}
-            <div className="rounded-3xl border border-amber-400/30 bg-card p-5 sm:p-6 shadow-sm">
-              <div className="flex items-center gap-2 border-b border-border/80 pb-3 mb-3">
-                <span className="grid size-9 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <Compass className="size-4.5" />
-                </span>
-                <h3 className="font-display text-lg font-bold text-foreground">
-                  Partner Preferences
-                </h3>
+              <div className="grid gap-x-8 sm:grid-cols-2">
+                <dl className="space-y-0.5">
+                  <Detail label="Residing City" value={profile.city || "Not specified"} />
+                  <Detail label="State" value={profile.state || "Not specified"} />
+                  <Detail label="Country" value={profile.country || "India"} />
+                </dl>
+                <dl className="space-y-0.5">
+                  <Detail label="Citizenship" value="Indian" />
+                  <Detail
+                    label="Registered Mobile"
+                    value={user?.mobile || profile.contact?.mobile || "Not specified"}
+                  />
+                  <Detail label="Email Address" value={user?.email || "Not specified"} />
+                </dl>
               </div>
-              <dl className="space-y-0.5">
-                <Detail label="Preferred Age Range" value="26 – 32 Years" />
-                <Detail label="Preferred Height" value="5ft 7in – 6ft 2in" />
-                <Detail label="Marital Status" value="Never Married" />
-                <Detail
-                  label="Religion & Caste"
-                  value={`${profile.religion} (All Communities Welcome)`}
-                />
-                <Detail label="Education" value="B.Tech, M.Tech, MBA, MS or equivalent" />
-                <Detail label="Location Preference" value="Delhi NCR, Mumbai, Bangalore, Pune" />
-              </dl>
             </div>
           </div>
         </div>

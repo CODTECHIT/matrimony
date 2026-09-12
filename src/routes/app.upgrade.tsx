@@ -241,19 +241,29 @@ function UpgradePage() {
           </div>
 
           {/* Billing Switch Toggle matching Screen 7 */}
-          <div className="inline-flex items-center gap-2.5 rounded-full bg-muted/80 p-1.5 self-start sm:self-auto border border-border/60">
-            <span
-              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all cursor-pointer ${
-                !isYearly ? "bg-white shadow-xs text-foreground" : "text-muted-foreground"
+          <div
+            role="tablist"
+            aria-label="Billing frequency"
+            className="inline-flex items-center gap-2.5 rounded-full bg-muted/80 p-1.5 self-start sm:self-auto border border-border/60"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isYearly}
+              className={`px-3 py-1 text-xs font-semibold rounded-full transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                !isYearly ? "bg-white shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setIsYearly(false)}
             >
               Standard
-            </span>
-            <span
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full transition-all cursor-pointer ${
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isYearly}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 isYearly
-                  ? "bg-[#C59B27] text-white shadow-xs"
+                  ? "bg-gold text-gold-foreground shadow-xs font-bold"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setIsYearly(true)}
@@ -262,12 +272,12 @@ function UpgradePage() {
               <span className="text-[0.65rem] bg-rose-500 text-white rounded-full px-1.5 py-0.2">
                 Save 20%
               </span>
-            </span>
+            </button>
           </div>
         </div>
 
         {/* 3 Tiered Plan Cards matching Screen 7 (Silver, Gold, Platinum) */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div role="radiogroup" aria-label="Membership plans" className="grid gap-4 sm:grid-cols-3">
           {paidPlans.map((plan) => {
             const isSelected = selectedPlanId === plan.id;
             const isCurrent = subscriptionQuery.data?.planId === plan.id;
@@ -276,8 +286,17 @@ function UpgradePage() {
             return (
               <div
                 key={plan.id}
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={0}
                 onClick={() => setSelectedPlanId(plan.id)}
-                className={`relative flex flex-col rounded-3xl p-5 cursor-pointer transition-all border-2 ${
+                onKeyDown={(e) => {
+                  if (e.key === " " || e.key === "Enter") {
+                    e.preventDefault();
+                    setSelectedPlanId(plan.id);
+                  }
+                }}
+                className={`relative flex flex-col rounded-3xl p-5 cursor-pointer transition-all border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   isSelected
                     ? "border-[#D92662] ring-2 ring-[#D92662]/20 bg-rose-50/30 dark:bg-rose-950/20 shadow-lg sm:scale-[1.02]"
                     : plan.popular

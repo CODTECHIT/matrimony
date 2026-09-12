@@ -121,10 +121,46 @@ interestsRouter.post("/:id/:action", requireAuth, async (req, res) => {
     }
 
     const newStatus = action === "accept" ? "accepted" : "declined";
-    await db.query(
-      `UPDATE interests SET status = $1, updated_at = NOW() WHERE id = $2 AND receiver_id = $3`,
+    const updateRes = await db.query(
+      `UPDATE interests SET status = $1, updated_at = NOW() 
+       WHERE id = $2 AND receiver_id = $3
+       RETURNING sender_id, receiver_id`,
       [newStatus, id, req.user!.id],
     );
+
+    if (action === "accept" && updateRes.rows.length > 0) {
+      const { sender_id, receiver_id } = updateRes.rows[0];
+
+      // Check if conversation already exists
+      const existingConv = await db.query(
+        `SELECT id FROM conversations
+         WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1)
+         LIMIT 1`,
+        [sender_id, receiver_id],
+      );
+
+      let conversationId = existingConv.rows[0]?.id;
+
+      if (!conversationId) {
+        // Create conversation
+        const convRes = await db.query(
+          `INSERT INTO conversations (user1_id, user2_id, last_message, last_message_at)
+           VALUES ($1, $2, 'Interest accepted! You can now start chatting.', NOW())
+           RETURNING id`,
+          [sender_id, receiver_id],
+        );
+        conversationId = convRes.rows[0].id;
+
+        // Add greeting message
+        await db.query(
+          `INSERT INTO messages (conversation_id, sender_id, body, status)
+           VALUES ($1, $2, 'Interest accepted! You can now start chatting.', 'sent')`,
+          [conversationId, receiver_id],
+        );
+      }
+
+      return res.json({ ok: true, conversationId });
+    }
 
     return res.json({ ok: true });
   } catch (err: any) {

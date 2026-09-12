@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import { toast } from "sonner";
 import { SlidersHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -17,9 +18,31 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { profilesService, subscriptionsService } from "@/services";
-import type { Profile, ProfileFilters } from "@/types";
+import { useAuth } from "@/hooks/useAuth";
+import type { Profile, ProfileFilters, Gender, MaritalStatus } from "@/types";
+
+const browseSearchSchema = z.object({
+  gender: z.string().optional(),
+  minAge: z.coerce.number().optional(),
+  maxAge: z.coerce.number().optional(),
+  ageMin: z.coerce.number().optional(),
+  ageMax: z.coerce.number().optional(),
+  religion: z.string().optional(),
+  caste: z.string().optional(),
+  motherTongue: z.string().optional(),
+  maritalStatus: z.string().optional(),
+  education: z.string().optional(),
+  occupation: z.string().optional(),
+  incomeRange: z.string().optional(),
+  city: z.string().optional(),
+  query: z.string().optional(),
+  sort: z.enum(["recent", "relevance", "age_asc", "age_desc"]).optional(),
+  page: z.coerce.number().optional(),
+  pageSize: z.coerce.number().optional(),
+});
 
 export const Route = createFileRoute("/app/browse")({
+  validateSearch: (search) => browseSearchSchema.parse(search),
   head: () => ({
     meta: [
       { title: "Browse profiles — YFJ Matrimony" },
@@ -36,8 +59,57 @@ export const Route = createFileRoute("/app/browse")({
 });
 
 function BrowsePage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState<ProfileFilters>({ page: 1, pageSize: 12, sort: "recent" });
+  const searchParams = Route.useSearch();
+  const navigate = Route.useNavigate();
+
+  const filters: ProfileFilters = useMemo(
+    () => ({
+      page: searchParams.page ?? 1,
+      pageSize: searchParams.pageSize ?? 12,
+      sort: searchParams.sort ?? "recent",
+      gender: searchParams.gender ? (searchParams.gender.toLowerCase() as Gender) : undefined,
+      ageMin: searchParams.ageMin ?? searchParams.minAge,
+      ageMax: searchParams.ageMax ?? searchParams.maxAge,
+      religion: searchParams.religion,
+      caste: searchParams.caste,
+      motherTongue: searchParams.motherTongue,
+      maritalStatus: searchParams.maritalStatus as MaritalStatus | undefined,
+      education: searchParams.education,
+      occupation: searchParams.occupation,
+      incomeRange: searchParams.incomeRange,
+      city: searchParams.city,
+      query: searchParams.query,
+    }),
+    [searchParams],
+  );
+
+  const setFilters = (next: ProfileFilters | ((prev: ProfileFilters) => ProfileFilters)) => {
+    const resolved = typeof next === "function" ? next(filters) : next;
+    void navigate({
+      search: (prev) => ({
+        ...prev,
+        page: resolved.page ?? 1,
+        pageSize: resolved.pageSize ?? 12,
+        sort: resolved.sort ?? "recent",
+        gender: resolved.gender,
+        ageMin: resolved.ageMin,
+        ageMax: resolved.ageMax,
+        minAge: undefined,
+        maxAge: undefined,
+        religion: resolved.religion,
+        caste: resolved.caste,
+        motherTongue: resolved.motherTongue,
+        maritalStatus: resolved.maritalStatus,
+        education: resolved.education,
+        occupation: resolved.occupation,
+        incomeRange: resolved.incomeRange,
+        city: resolved.city,
+        query: resolved.query,
+      }),
+    });
+  };
 
   const subscriptionQuery = useQuery({
     queryKey: ["subscription"],
@@ -49,16 +121,52 @@ function BrowsePage() {
     placeholderData: keepPreviousData,
   });
 
+  const displayItems = useMemo(() => {
+    return (profilesQuery.data?.items ?? []).filter((p) => !user || p.id !== user.id);
+  }, [profilesQuery.data?.items, user]);
+
   const handleShortlist = async (profile: Profile) => {
-    const result = await profilesService.toggleShortlist(profile.id);
-    await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-    toast.success(result.shortlisted ? "Added to your shortlist" : "Removed from shortlist");
+    // Optimistic cache update
+    queryClient.setQueriesData({ queryKey: ["profiles"] }, (old: any) => {
+      if (!old || !old.items) return old;
+      return {
+        ...old,
+        items: old.items.map((item: Profile) =>
+          item.id === profile.id ? { ...item, shortlisted: !item.shortlisted } : item,
+        ),
+      };
+    });
+
+    try {
+      const result = await profilesService.toggleShortlist(profile.id);
+      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      toast.success(result.shortlisted ? "Added to your shortlist" : "Removed from shortlist");
+    } catch {
+      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      toast.error("Failed to update shortlist");
+    }
   };
 
   const handleInterest = async (profile: Profile) => {
-    await profilesService.sendInterest(profile.id);
-    await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-    toast.success(`Interest sent to ${profile.fullName.split(" ")[0]}`);
+    // Optimistic cache update so the button instantly changes from "Connect" to "Sent"
+    queryClient.setQueriesData({ queryKey: ["profiles"] }, (old: any) => {
+      if (!old || !old.items) return old;
+      return {
+        ...old,
+        items: old.items.map((item: Profile) =>
+          item.id === profile.id ? { ...item, interestSent: true } : item,
+        ),
+      };
+    });
+
+    try {
+      await profilesService.sendInterest(profile.id);
+      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      toast.success(`Interest sent to ${profile.fullName.split(" ")[0]}`);
+    } catch {
+      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      toast.error("Failed to send interest");
+    }
   };
 
   const advancedEnabled = subscriptionQuery.data?.permissions.canUseAdvancedFilters ?? false;
@@ -68,7 +176,15 @@ function BrowsePage() {
       value={filters}
       advancedEnabled={advancedEnabled}
       onChange={setFilters}
-      onReset={() => setFilters({ page: 1, pageSize: 12, sort: "recent" })}
+      onReset={() =>
+        void navigate({
+          search: {
+            page: 1,
+            pageSize: 12,
+            sort: "recent",
+          },
+        })
+      }
     />
   );
 
@@ -79,7 +195,7 @@ function BrowsePage() {
         title="Browse profiles"
         description={
           profilesQuery.data
-            ? `${profilesQuery.data.total} profiles match your preferences`
+            ? `${displayItems.length} profile${displayItems.length === 1 ? "" : "s"} match your preferences`
             : "Finding profiles for you"
         }
         actions={
@@ -134,7 +250,7 @@ function BrowsePage() {
             </div>
           ) : profilesQuery.isError ? (
             <ErrorState onRetry={() => void profilesQuery.refetch()} />
-          ) : profilesQuery.data && profilesQuery.data.items.length === 0 ? (
+          ) : profilesQuery.data && displayItems.length === 0 ? (
             <EmptyState
               title="No profiles match these filters"
               description="Try widening the age range or removing a community filter."
@@ -150,7 +266,7 @@ function BrowsePage() {
           ) : (
             <>
               <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3 w-full max-w-full min-w-0">
-                {profilesQuery.data?.items.map((profile) => (
+                {displayItems.map((profile) => (
                   <ProfileCard
                     key={profile.id}
                     profile={profile}

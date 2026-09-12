@@ -6,7 +6,7 @@ interface LogoProps {
   className?: string;
   /** "mark" shows only the emblem, "full" adds the wordmark. */
   variant?: "mark" | "full";
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   linkTo?: string;
   showText?: boolean;
 }
