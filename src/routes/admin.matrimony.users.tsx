@@ -66,8 +66,8 @@ function AdminUsersPage() {
       }
       await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       toast.success(action === "delete" ? "Member deleted" : `Member marked as ${action}`);
-    } catch {
-      toast.error("Action failed");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Action failed");
     }
   };
 
@@ -91,8 +91,8 @@ function AdminUsersPage() {
       await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       toast.success("Member account updated successfully");
       setManagingUser(null);
-    } catch {
-      toast.error("Failed to update member");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to update member");
     } finally {
       setIsSaving(false);
     }
@@ -143,7 +143,7 @@ function AdminUsersPage() {
                   <TableCell className="font-medium">
                     <div>
                       <p className="font-semibold text-foreground">{user.fullName}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{user.id}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{user.displayId || user.id}</p>
                     </div>
                   </TableCell>
                   <TableCell>{user.mobile}</TableCell>

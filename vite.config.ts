@@ -18,6 +18,10 @@ export default defineConfig(({ command }) => ({
         target: "http://localhost:5000",
         changeOrigin: true,
       },
+      "/ws": {
+        target: "ws://localhost:5000",
+        ws: true,
+      },
     },
   },
   plugins: [

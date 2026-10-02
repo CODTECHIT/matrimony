@@ -3,11 +3,11 @@ import { env } from "@/lib/env";
 import type { Conversation, Message } from "@/types";
 import { delay } from "@/mocks/adapter";
 import { mockConversations, mockMessages, mockUser } from "@/mocks/data";
+import { realtimeClient } from "@/lib/realtime";
 
 /**
  * Transport-agnostic messaging service.
- * `subscribe` is the single integration point for WebSocket / Socket.IO /
- * AWS AppSync — swap its body without touching any chat UI component.
+ * `subscribe` is wired to the live WebSocket server.
  */
 export const messagesService = {
   async conversations(): Promise<Conversation[]> {
@@ -62,10 +62,29 @@ export const messagesService = {
     return api.post("/conversations/start", { targetUserId });
   },
 
-  /** Returns an unsubscribe function. No-op until a realtime transport is wired. */
-  subscribe(_conversationId: string, _onMessage: (message: Message) => void): () => void {
-    if (!env.chatSocketUrl) return () => {};
-    // Backend integration point: open the socket, forward messages to onMessage.
-    return () => {};
+  /** Subscribes to live WebSocket message updates for a conversation */
+  subscribe(conversationId: string, onMessage: (message: Message) => void): () => void {
+    realtimeClient.subscribeToConversation(conversationId);
+
+    const unsubscribeListener = realtimeClient.on("chat:message", (data: any) => {
+      if (data?.conversationId === conversationId && data?.message) {
+        onMessage(data.message);
+      }
+    });
+
+    return () => {
+      unsubscribeListener();
+      realtimeClient.unsubscribeFromConversation(conversationId);
+    };
+  },
+
+  async deleteConversation(conversationId: string): Promise<{ ok: boolean }> {
+    if (env.useMockApi) return delay({ ok: true }, 150);
+    return api.delete<{ ok: boolean }>(`/conversations/${conversationId}`);
+  },
+
+  async clearConversation(conversationId: string): Promise<{ ok: boolean }> {
+    if (env.useMockApi) return delay({ ok: true }, 150);
+    return api.post<{ ok: boolean }>(`/conversations/${conversationId}/clear`);
   },
 };

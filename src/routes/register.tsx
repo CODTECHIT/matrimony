@@ -300,7 +300,16 @@ function RegisterPage() {
           </h2>
 
           <div className="space-y-4">
-            {profileSections[step]?.fields.map((field) => (
+            {(
+              step === 1
+                ? profileSections.find((s) => s.id === "community")?.fields ?? []
+                : [
+                    ...(profileSections.find((s) => s.id === "career")?.fields ?? []),
+                    ...(profileSections.find((s) => s.id === "location")?.fields ?? []).filter(
+                      (f) => f.name !== "residenceStatus",
+                    ),
+                  ]
+            ).map((field) => (
               <DynamicField
                 key={field.name}
                 field={field}

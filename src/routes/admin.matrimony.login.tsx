@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/brand/Logo";
 import { authService } from "@/services";
-import { useAuth } from "@/hooks/useAuth";
+import { useAdminAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/admin/matrimony/login")({
   head: () => ({
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/admin/matrimony/login")({
 
 function AdminLoginPage() {
   const navigate = useNavigate();
-  const { setSession, status, user } = useAuth();
+  const { setSession, status, user } = useAdminAuth();
 
   // Auto-redirect if already authenticated as admin
   useEffect(() => {

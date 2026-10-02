@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { LogOut, Menu, ShieldCheck, User, X } from "lucide-react";
+import { LogOut, Menu, User, X } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -74,19 +74,6 @@ export function SiteHeader() {
               >
                 <Link to="/app">Dashboard</Link>
               </Button>
-
-              {user?.role === "admin" ? (
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="hidden sm:inline-flex rounded-full border-amber-500/40 text-amber-700 dark:text-amber-300"
-                >
-                  <Link to="/admin/matrimony">
-                    <ShieldCheck className="mr-1.5 size-3.5" /> Admin
-                  </Link>
-                </Button>
-              ) : null}
 
               <Link
                 to="/app/my-profile"
@@ -184,15 +171,6 @@ export function SiteHeader() {
               >
                 My Profile
               </Link>
-              {user?.role === "admin" ? (
-                <Link
-                  to="/admin/matrimony"
-                  onClick={() => setOpen(false)}
-                  className="block rounded-xl px-3.5 py-2.5 text-sm font-medium text-amber-600 hover:bg-muted"
-                >
-                  Admin Portal
-                </Link>
-              ) : null}
               <button
                 type="button"
                 onClick={handleSignOut}

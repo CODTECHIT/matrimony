@@ -51,12 +51,27 @@ export const profileSections: FieldSection[] = [
         type: "select",
         options: ["5'0\"", "5'2\"", "5'4\"", "5'6\"", "5'8\"", "5'10\"", "6'0\"", "6'2\""],
       },
-      { name: "mobile", label: "Mobile number", type: "tel", required: true, maxLength: 10 },
+      {
+        name: "mobile",
+        label: "Mobile number",
+        type: "tel",
+        required: true,
+        maxLength: 10,
+        placeholder: "10-digit mobile number",
+      },
+      {
+        name: "whatsapp",
+        label: "WhatsApp number",
+        type: "tel",
+        required: false,
+        maxLength: 15,
+        placeholder: "e.g. 9876543210 (optional)",
+      },
     ],
   },
   {
     id: "community",
-    title: "Community",
+    title: "Community & religion",
     description: "Helps us suggest matches your family will approve of.",
     fields: [
       {
@@ -89,6 +104,7 @@ export const profileSections: FieldSection[] = [
   {
     id: "career",
     title: "Education & career",
+    description: "Your professional background and qualifications.",
     fields: [
       {
         name: "education",
@@ -110,25 +126,29 @@ export const profileSections: FieldSection[] = [
         type: "select",
         options: ["₹0–5 LPA", "₹5–9 LPA", "₹9–12 LPA", "₹12–18 LPA", "₹18–25 LPA", "₹25 LPA+"],
       },
-      { name: "city", label: "City", type: "text", required: true, maxLength: 60 },
-      { name: "state", label: "State", type: "text", maxLength: 60 },
-      { name: "country", label: "Country", type: "text", maxLength: 60 },
     ],
   },
   {
-    id: "about",
-    title: "About & family",
+    id: "location",
+    title: "Location",
+    description: "Where you currently live and work.",
     fields: [
+      { name: "city", label: "City", type: "text", required: true, maxLength: 60 },
+      { name: "state", label: "State", type: "text", maxLength: 60 },
+      { name: "country", label: "Country", type: "text", maxLength: 60, placeholder: "e.g. India" },
       {
-        name: "about",
-        label: "About yourself",
-        type: "textarea",
-        maxLength: 600,
-        placeholder: "A few lines about your personality, interests and what you value.",
+        name: "residenceStatus",
+        label: "Residence status",
+        type: "select",
+        options: ["Citizen", "Permanent Resident", "Work Permit", "Student Visa"],
       },
-      { name: "fatherOccupation", label: "Father's occupation", type: "text", maxLength: 80 },
-      { name: "motherOccupation", label: "Mother's occupation", type: "text", maxLength: 80 },
-      { name: "siblings", label: "Siblings", type: "text", maxLength: 80 },
+    ],
+  },
+  {
+    id: "family",
+    title: "Family background",
+    description: "Information about your family structure and parents.",
+    fields: [
       { name: "familyType", label: "Family type", type: "select", options: ["Nuclear", "Joint"] },
       {
         name: "familyValues",
@@ -136,6 +156,27 @@ export const profileSections: FieldSection[] = [
         type: "select",
         options: ["Traditional", "Moderate", "Liberal"],
       },
+      { name: "fatherOccupation", label: "Father's occupation", type: "text", maxLength: 80 },
+      { name: "motherOccupation", label: "Mother's occupation", type: "text", maxLength: 80 },
+      { name: "siblings", label: "Siblings", type: "text", maxLength: 80 },
+    ],
+  },
+  {
+    id: "about",
+    title: "About yourself",
+    description: "Tell prospective matches about your personality and lifestyle.",
+    fields: [
+      {
+        name: "about",
+        label: "About yourself",
+        type: "textarea",
+        maxLength: 600,
+        placeholder: "A few lines about your personality, interests and what you value in a life partner.",
+      },
     ],
   },
 ];
+
+export function getSectionById(id: string): FieldSection | undefined {
+  return profileSections.find((s) => s.id === id);
+}

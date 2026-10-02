@@ -3,3 +3,5 @@ export { profilesService } from "./profiles.service";
 export { subscriptionsService } from "./subscriptions.service";
 export { messagesService } from "./messages.service";
 export { adminService } from "./admin.service";
+export { notificationsService } from "./notifications.service";
+

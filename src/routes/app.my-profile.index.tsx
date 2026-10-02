@@ -1,11 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import useEmblaCarousel from "embla-carousel-react";
 import {
   ArrowLeft,
   BadgeCheck,
   CheckCircle2,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
   Pencil,
   User,
   GraduationCap,
@@ -67,6 +70,54 @@ function MyProfilePage() {
     return "completion";
   });
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: false,
+    dragFree: false,
+    containScroll: "trimSnaps",
+  });
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setSelectedPhotoIndex(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    onSelect();
+    emblaApi.on("select", onSelect);
+    emblaApi.on("reInit", onSelect);
+    return () => {
+      emblaApi.off("select", onSelect);
+      emblaApi.off("reInit", onSelect);
+    };
+  }, [emblaApi, onSelect]);
+
+  const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointerStartRef.current) return;
+    const dx = Math.abs(e.clientX - pointerStartRef.current.x);
+    const dy = Math.abs(e.clientY - pointerStartRef.current.y);
+    const dt = Date.now() - pointerStartRef.current.time;
+    pointerStartRef.current = null;
+
+    if (dx > 8 || dy > 8 || dt > 400) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const ratio = clickX / rect.width;
+
+    if (ratio < 0.35) {
+      emblaApi?.scrollPrev();
+    } else if (ratio > 0.65) {
+      emblaApi?.scrollNext();
+    }
+  };
   const query = useQuery({ queryKey: ["my-profile"], queryFn: () => profilesService.myProfile() });
 
   useEffect(() => {
@@ -88,7 +139,7 @@ function MyProfilePage() {
   const hasBasic = Boolean(profile.fullName && (profile.age || profile.dateOfBirth) && profile.maritalStatus);
   const hasCommunity = Boolean(profile.religion || profile.motherTongue);
   const hasEducation = Boolean(profile.education || profile.occupation);
-  const hasPhotos = Boolean(profile.photos && profile.photos.length >= 1);
+  const hasLocation = Boolean(profile.city || profile.state);
   const hasFamily = Boolean(
     profile.family &&
     (profile.family.familyType ||
@@ -96,6 +147,8 @@ function MyProfilePage() {
       profile.family.motherOccupation ||
       profile.family.siblings),
   );
+  const hasAbout = Boolean(profile.about && profile.about.trim().length > 0);
+  const hasPhotos = Boolean(profile.photos && profile.photos.length >= 1);
 
   const completionItems = [
     {
@@ -103,35 +156,62 @@ function MyProfilePage() {
       title: "Basic Information",
       icon: FileText,
       status: hasBasic ? ("completed" as const) : ("warning" as const),
+      hash: "basic",
     },
     {
       id: "community",
       title: "Community & Religion",
       icon: Sparkles,
       status: hasCommunity ? ("completed" as const) : ("warning" as const),
+      hash: "community",
     },
     {
-      id: "education",
+      id: "career",
       title: "Education & Career",
       icon: GraduationCap,
       status: hasEducation ? ("completed" as const) : ("warning" as const),
+      hash: "career",
     },
     {
-      id: "photos",
-      title: "Photos",
-      icon: ImageIcon,
-      status: hasPhotos ? ("completed" as const) : ("warning" as const),
+      id: "location",
+      title: "Location Details",
+      icon: MapPin,
+      status: hasLocation ? ("completed" as const) : ("warning" as const),
+      hash: "location",
     },
     {
       id: "family",
       title: "Family Details",
       icon: Users,
       status: hasFamily ? ("completed" as const) : ("warning" as const),
+      hash: "family",
+    },
+    {
+      id: "about",
+      title: "About Yourself",
+      icon: Heart,
+      status: hasAbout ? ("completed" as const) : ("warning" as const),
+      hash: "about",
+    },
+    {
+      id: "photos",
+      title: "Profile Photos",
+      icon: ImageIcon,
+      status: hasPhotos ? ("completed" as const) : ("warning" as const),
+      hash: "",
     },
   ];
 
-  const completedCount = [hasBasic, hasCommunity, hasEducation, hasPhotos, hasFamily].filter(Boolean).length;
-  const calculatedPercentage = Math.round((completedCount / 5) * 100);
+  const completedCount = [
+    hasBasic,
+    hasCommunity,
+    hasEducation,
+    hasLocation,
+    hasFamily,
+    hasAbout,
+    hasPhotos,
+  ].filter(Boolean).length;
+  const calculatedPercentage = Math.round((completedCount / 7) * 100);
   const completionPercentage = profile.profileCompletion ?? calculatedPercentage;
 
   return (
@@ -219,29 +299,83 @@ function MyProfilePage() {
             <div className="grid gap-6 md:grid-cols-12 items-center">
               {/* Profile Photo with Gallery Thumbnails */}
               <div className="md:col-span-4 space-y-3">
-                <div className="relative overflow-hidden rounded-2xl aspect-[4/5] border border-amber-400/40 shadow-card">
-                  <img
-                    src={getProfileAvatar(
-                      profile.photos[selectedPhotoIndex] ?? profile.photos[0],
-                      profile.gender,
-                    )}
-                    alt={profile.fullName}
-                    onError={(e) => handleImageError(e, profile.gender)}
-                    className="size-full object-cover"
-                  />
-                  <div className="absolute top-3 right-3 rounded-full bg-black/60 backdrop-blur-md px-3 py-1 text-xs font-semibold text-white">
-                    {selectedPhotoIndex + 1}/{profile.photos.length || 1}
+                <div className="relative overflow-hidden rounded-2xl aspect-[4/5] border border-amber-400/40 shadow-card bg-black select-none group">
+                  {/* Embla Viewport */}
+                  <div
+                    ref={emblaRef}
+                    onPointerDown={handlePointerDown}
+                    onPointerUp={handlePointerUp}
+                    className="overflow-hidden size-full cursor-grab active:cursor-grabbing touch-pan-y"
+                  >
+                    <div className="flex h-full touch-pan-y">
+                      {(profile.photos?.length ? profile.photos : [""]).map((photo, idx) => (
+                        <div
+                          key={idx}
+                          className="min-w-0 shrink-0 grow-0 basis-full h-full relative overflow-hidden"
+                        >
+                          <img
+                            src={getProfileAvatar(photo, profile.gender)}
+                            alt={`${profile.fullName} photo ${idx + 1}`}
+                            onError={(e) => handleImageError(e, profile.gender)}
+                            className="size-full object-cover select-none pointer-events-none"
+                            draggable={false}
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
+
+                  <div className="absolute top-3 right-3 rounded-full bg-black/60 backdrop-blur-md px-3 py-1 text-xs font-semibold text-white pointer-events-none z-10">
+                    {selectedPhotoIndex + 1}/{profile.photos?.length || 1}
+                  </div>
+
+                  {/* Navigation Chevrons */}
+                  {profile.photos && profile.photos.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          emblaApi?.scrollPrev();
+                        }}
+                        disabled={selectedPhotoIndex === 0}
+                        aria-label="Previous photo"
+                        className={`absolute left-2 top-1/2 -translate-y-1/2 z-10 grid size-8 place-items-center rounded-full bg-black/50 text-white backdrop-blur-md transition-all hover:bg-black/80 cursor-pointer ${
+                          selectedPhotoIndex === 0
+                            ? "opacity-0 pointer-events-none"
+                            : "opacity-0 group-hover:opacity-100 sm:opacity-75"
+                        }`}
+                      >
+                        <ChevronLeft className="size-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          emblaApi?.scrollNext();
+                        }}
+                        disabled={selectedPhotoIndex === profile.photos.length - 1}
+                        aria-label="Next photo"
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 z-10 grid size-8 place-items-center rounded-full bg-black/50 text-white backdrop-blur-md transition-all hover:bg-black/80 cursor-pointer ${
+                          selectedPhotoIndex === profile.photos.length - 1
+                            ? "opacity-0 pointer-events-none"
+                            : "opacity-0 group-hover:opacity-100 sm:opacity-75"
+                        }`}
+                      >
+                        <ChevronRight className="size-5" />
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Thumbnails */}
-                {profile.photos.length > 1 ? (
+                {profile.photos && profile.photos.length > 1 ? (
                   <div className="flex gap-2 justify-center">
                     {profile.photos.map((photo, index) => (
                       <button
                         key={index}
                         type="button"
-                        onClick={() => setSelectedPhotoIndex(index)}
+                        onClick={() => (emblaApi ? emblaApi.scrollTo(index) : setSelectedPhotoIndex(index))}
                         className={`size-12 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                           selectedPhotoIndex === index
                             ? "border-primary scale-105 shadow-xs"
@@ -320,7 +454,7 @@ function MyProfilePage() {
                   <div className="rounded-2xl border border-border bg-card p-3 text-center">
                     <p className="text-xs text-muted-foreground">Profile ID</p>
                     <p className="font-bold text-foreground text-xs sm:text-sm mt-0.5">
-                      {profile.id}
+                      {profile.displayId || profile.id}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-border bg-card p-3 text-center">
@@ -479,7 +613,7 @@ function MyProfilePage() {
                 </div>
                 <Link
                   to="/app/my-profile/edit"
-                  hash="about"
+                  hash="family"
                   className="text-xs font-semibold text-[#D92662] hover:underline flex items-center gap-1"
                 >
                   <Pencil className="size-3" /> Edit
@@ -524,7 +658,7 @@ function MyProfilePage() {
                 </div>
                 <Link
                   to="/app/my-profile/edit"
-                  hash="career"
+                  hash="location"
                   className="text-xs font-semibold text-[#D92662] hover:underline flex items-center gap-1"
                 >
                   <Pencil className="size-3" /> Edit
@@ -541,6 +675,10 @@ function MyProfilePage() {
                   <Detail
                     label="Registered Mobile"
                     value={user?.mobile || profile.contact?.mobile || "Not specified"}
+                  />
+                  <Detail
+                    label="WhatsApp Number"
+                    value={profile.contact?.whatsapp || "Not specified"}
                   />
                   <Detail label="Email Address" value={user?.email || "Not specified"} />
                 </dl>
@@ -602,6 +740,7 @@ function MyProfilePage() {
                 <Link
                   key={item.id}
                   to="/app/my-profile/edit"
+                  hash={item.hash}
                   className="flex items-center justify-between rounded-2xl border border-border md:border-amber-400/30 bg-white dark:bg-card p-4 shadow-xs hover:shadow-md hover:border-[#D92662]/40 transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-3.5">

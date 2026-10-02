@@ -11,26 +11,61 @@ export class ApiError extends Error {
   }
 }
 
-const TOKEN_KEY = "yfj.auth.token";
+const USER_TOKEN_KEY = "yfj.auth.token";
+const ADMIN_TOKEN_KEY = "yfj.admin.token";
 
 export const tokenStore = {
-  get(): string | null {
+  getUserToken(): string | null {
     if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(TOKEN_KEY);
+    return window.localStorage.getItem(USER_TOKEN_KEY);
   },
-  set(token: string) {
+  setUserToken(token: string) {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(TOKEN_KEY, token);
+    window.localStorage.setItem(USER_TOKEN_KEY, token);
   },
-  clear() {
+  clearUserToken() {
     if (typeof window === "undefined") return;
-    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(USER_TOKEN_KEY);
+  },
+
+  getAdminToken(): string | null {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(ADMIN_TOKEN_KEY);
+  },
+  setAdminToken(token: string) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  },
+  clearAdminToken() {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+  },
+
+  // Backwards compatibility methods
+  get(scope?: "user" | "admin"): string | null {
+    if (scope === "admin") return this.getAdminToken();
+    return this.getUserToken();
+  },
+  set(token: string, scope?: "user" | "admin") {
+    if (scope === "admin") this.setAdminToken(token);
+    else this.setUserToken(token);
+  },
+  clear(scope?: "user" | "admin" | "all") {
+    if (scope === "admin") {
+      this.clearAdminToken();
+    } else if (scope === "all") {
+      this.clearUserToken();
+      this.clearAdminToken();
+    } else {
+      this.clearUserToken();
+    }
   },
 };
 
-interface RequestOptions extends Omit<RequestInit, "body"> {
+export interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
+  scope?: "user" | "admin";
 }
 
 /**
@@ -38,7 +73,7 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
  * Components never call fetch directly — they go through src/services/*.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, query, headers, ...rest } = options;
+  const { body, query, headers, scope, ...rest } = options;
 
   const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
   const base = (env.apiBaseUrl || `${origin}/api`).replace(/\/?$/, "/");
@@ -49,7 +84,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
   }
 
-  const token = tokenStore.get();
+  const isAdminScope = scope === "admin" || path.startsWith("/admin") || path.startsWith("admin");
+  const token = isAdminScope ? tokenStore.getAdminToken() : tokenStore.getUserToken();
   const response = await fetch(url.toString(), {
     ...rest,
     headers: {

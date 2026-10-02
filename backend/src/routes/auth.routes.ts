@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db } from "../config/db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
-import { sendPasswordResetEmail } from "../config/mailer.js";
+import { sendPasswordResetEmail, sendWelcomeEmail } from "../config/mailer.js";
 
 export const authRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "yfj_matrimony_secret_jwt_key_2026_dev";
@@ -38,6 +38,12 @@ authRouter.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
+    if (user.role === "admin") {
+      return res.status(403).json({
+        message: "Admin accounts cannot login from the user login page. Please access the Admin Portal.",
+      });
+    }
+
     if (!user.password_hash) {
       return res.status(401).json({
         message: "Password login is not configured for this account. Please log in using OTP or reset your password.",
@@ -63,6 +69,7 @@ authRouter.post("/login", async (req, res) => {
         avatarUrl: user.avatar_url,
         profileCompletion: user.profile_completion,
         plan: user.plan,
+        profileStatus: user.profile_status,
       },
     });
   } catch (err: any) {
@@ -115,7 +122,7 @@ authRouter.post("/otp/verify", async (req, res) => {
     mobileOtpStore.delete(cleanMobile);
 
     const { rows } = await db.query(
-      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan 
+      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status 
        FROM users WHERE mobile = $1`,
       [cleanMobile],
     );
@@ -123,6 +130,12 @@ authRouter.post("/otp/verify", async (req, res) => {
     const user = rows[0];
     if (!user) {
       return res.status(404).json({ message: "Account not found with this mobile" });
+    }
+
+    if (user.role === "admin") {
+      return res.status(403).json({
+        message: "Admin accounts cannot login from the user login page. Please access the Admin Portal.",
+      });
     }
 
     const token = createToken({ id: user.id, role: user.role, plan: user.plan, gender: user.gender });
@@ -138,6 +151,7 @@ authRouter.post("/otp/verify", async (req, res) => {
         avatarUrl: user.avatar_url,
         profileCompletion: user.profile_completion,
         plan: user.plan,
+        profileStatus: user.profile_status,
       },
     });
   } catch (err: any) {
@@ -199,7 +213,7 @@ authRouter.post("/register", async (req, res) => {
     const userRes = await client.query(
       `INSERT INTO users (full_name, gender, email, mobile, password_hash, role, plan, profile_completion, profile_status)
        VALUES ($1, $2, $3, $4, $5, 'user', 'free', 40, 'pending')
-       RETURNING id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan`,
+       RETURNING id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status, display_id`,
       [fullName.trim(), gender.toLowerCase(), cleanEmail, mobile ? mobile.trim() : null, passwordHash],
     );
 
@@ -228,6 +242,19 @@ authRouter.post("/register", async (req, res) => {
 
     await client.query("COMMIT");
 
+    // Asynchronously send welcome email to new user
+    void (async () => {
+      try {
+        await sendWelcomeEmail({
+          to: cleanEmail,
+          fullName: user.full_name,
+          displayId: user.display_id || undefined,
+        });
+      } catch (mailErr: any) {
+        console.warn("[AUTH] Failed to send welcome email:", mailErr.message);
+      }
+    })();
+
     const token = createToken({ id: user.id, role: user.role, plan: user.plan, gender: user.gender });
 
     return res.json({
@@ -242,6 +269,8 @@ authRouter.post("/register", async (req, res) => {
         avatarUrl: user.avatar_url,
         profileCompletion: user.profile_completion,
         plan: user.plan,
+        profileStatus: user.profile_status,
+        displayId: user.display_id || undefined,
       },
     });
   } catch (err: any) {
@@ -256,7 +285,7 @@ authRouter.post("/register", async (req, res) => {
 authRouter.get("/me", requireAuth, async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan 
+      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status 
        FROM users WHERE id = $1`,
       [req.user!.id],
     );
@@ -264,6 +293,10 @@ authRouter.get("/me", requireAuth, async (req, res) => {
     const user = rows[0];
     if (!user) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role === "admin") {
+      return res.status(403).json({ message: "Admin access requires the Admin Portal." });
     }
 
     return res.json({
@@ -276,6 +309,7 @@ authRouter.get("/me", requireAuth, async (req, res) => {
       avatarUrl: user.avatar_url,
       profileCompletion: user.profile_completion,
       plan: user.plan,
+      profileStatus: user.profile_status,
     });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
@@ -463,5 +497,65 @@ authRouter.post("/password/reset", async (req, res) => {
 authRouter.post("/logout", (_req, res) => {
   return res.json({ ok: true });
 });
+
+// 9. Get User Preferences / Settings
+authRouter.get("/preferences", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT preferences FROM users WHERE id = $1", [req.user!.id]);
+    const defaults = {
+      interests: true,
+      messages: true,
+      matches: false,
+      photo: false,
+      contact: true,
+      online: true,
+    };
+    if (rows.length === 0) return res.status(404).json({ message: "User not found" });
+    const userPrefs = rows[0].preferences || {};
+    return res.json({ ...defaults, ...userPrefs });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message || "Failed to get preferences" });
+  }
+});
+
+// 10. Update User Preferences / Settings
+authRouter.patch("/preferences", requireAuth, async (req, res) => {
+  try {
+    const updates = req.body;
+    if (!updates || typeof updates !== "object") {
+      return res.status(400).json({ message: "Invalid preferences payload" });
+    }
+
+    const { rows: currentRows } = await db.query("SELECT preferences FROM users WHERE id = $1", [req.user!.id]);
+    if (currentRows.length === 0) return res.status(404).json({ message: "User not found" });
+
+    const currentPrefs = currentRows[0].preferences || {
+      interests: true,
+      messages: true,
+      matches: false,
+      photo: false,
+      contact: true,
+      online: true,
+    };
+
+    const allowedKeys = ["interests", "messages", "matches", "photo", "contact", "online"];
+    const merged = { ...currentPrefs };
+    for (const key of allowedKeys) {
+      if (typeof updates[key] === "boolean") {
+        merged[key] = updates[key];
+      }
+    }
+
+    const { rows } = await db.query(
+      "UPDATE users SET preferences = $1, updated_at = NOW() WHERE id = $2 RETURNING preferences",
+      [JSON.stringify(merged), req.user!.id]
+    );
+
+    return res.json(rows[0].preferences);
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message || "Failed to update preferences" });
+  }
+});
+
 
 

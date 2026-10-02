@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { ErrorState, ListSkeleton } from "@/components/common/states";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -29,10 +31,32 @@ export const Route = createFileRoute("/admin/matrimony/subscriptions")({
 });
 
 function AdminSubscriptionsPage() {
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["admin", "subscriptions"],
     queryFn: () => adminService.subscriptions(),
   });
+
+  const handleCancel = async (user: string) => {
+    if (!window.confirm(`Cancel active subscription for ${user}?`)) return;
+    try {
+      await adminService.cancelSubscription(user);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
+      toast.success(`Subscription for ${user} marked as expired.`);
+    } catch {
+      toast.error("Failed to cancel subscription.");
+    }
+  };
+
+  const handleExtend = async (user: string) => {
+    try {
+      await adminService.extendSubscription(user, 30);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "subscriptions"] });
+      toast.success(`Subscription for ${user} extended by 30 days.`);
+    } catch {
+      toast.error("Failed to extend subscription.");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -56,6 +80,7 @@ function AdminSubscriptionsPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Expires</TableHead>
                 <TableHead>Auto-renew</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -74,6 +99,26 @@ function AdminSubscriptionsPage() {
                       : "—"}
                   </TableCell>
                   <TableCell>{row.autoRenew ? "On" : "Off"}</TableCell>
+                  <TableCell className="text-right space-x-1.5">
+                    {row.status === "active" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                        onClick={() => handleCancel(row.user)}
+                      >
+                        Cancel
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-primary hover:bg-primary-soft"
+                      onClick={() => handleExtend(row.user)}
+                    >
+                      +30 Days
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

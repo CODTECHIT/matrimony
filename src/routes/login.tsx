@@ -49,19 +49,17 @@ function LoginPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  const getDestination = (role: string) => {
-    if (role === "admin") return "/admin";
-    if (search.redirect && search.redirect.startsWith("/")) return search.redirect;
-    return "/app";
-  };
+  const destination =
+    search.redirect && search.redirect.startsWith("/") && !search.redirect.startsWith("/admin")
+      ? search.redirect
+      : "/app";
 
-  // Redirect if user is already authenticated
+  // Redirect if user is already authenticated as a regular member
   useEffect(() => {
-    if (status === "authenticated" && user) {
-      void navigate({ to: getDestination(user.role) });
+    if (status === "authenticated" && user && user.role !== "admin") {
+      void navigate({ to: destination });
     }
-  }, [status, user, navigate]);
-
+  }, [status, user, destination, navigate]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -73,14 +71,31 @@ function LoginPage() {
       return;
     }
     setErrors({});
+
+    const normalizedEmail = parsed.data.email.trim().toLowerCase();
+    if (normalizedEmail.startsWith("admin") || normalizedEmail === "admin@yfjmatrimony.com") {
+      toast.error(
+        "Admin accounts cannot login from the member login page. Please access the Admin Portal at /admin/matrimony/login.",
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
       const session = await authService.loginWithEmail(parsed.data);
+      if (session.user.role === "admin") {
+        toast.error(
+          "Admin accounts cannot login from the member login page. Please access the Admin Portal at /admin/matrimony/login.",
+        );
+        return;
+      }
       setSession(session);
       toast.success(`Welcome back, ${session.user.fullName.split(" ")[0]}`);
-      void navigate({ to: getDestination(session.user.role) });
+      void navigate({ to: destination });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Login failed. Please check your credentials.");
+      toast.error(
+        error instanceof Error ? error.message : "Login failed. Please check your credentials.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -89,7 +104,6 @@ function LoginPage() {
   return (
     <AuthLayout>
       <div className="space-y-4">
-
         {/* Email & Password Login Form */}
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div className="space-y-1.5">
@@ -116,7 +130,9 @@ function LoginPage() {
               <Mail className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground/60" />
             </div>
             {errors["email"] ? (
-              <p id="email-error" className="text-xs text-destructive">{errors["email"]}</p>
+              <p id="email-error" className="text-xs text-destructive">
+                {errors["email"]}
+              </p>
             ) : null}
           </div>
 
@@ -151,7 +167,9 @@ function LoginPage() {
               </button>
             </div>
             {errors["password"] ? (
-              <p id="password-error" className="text-xs text-destructive">{errors["password"]}</p>
+              <p id="password-error" className="text-xs text-destructive">
+                {errors["password"]}
+              </p>
             ) : null}
           </div>
 

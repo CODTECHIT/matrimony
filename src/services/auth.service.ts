@@ -46,7 +46,6 @@ function session(user: AuthUser): AuthSession {
 }
 
 export const authService = {
-
   async loginAdmin(payload: AdminLoginPayload): Promise<AuthSession> {
     if (env.useMockApi) {
       if (
@@ -55,29 +54,41 @@ export const authService = {
         payload.password === "Admin@YFJ2026"
       ) {
         const result: AuthSession = { token: "mock-admin-token", user: mockAdmin };
-        tokenStore.set(result.token);
+        tokenStore.setAdminToken(result.token);
         return delay(result, 200);
       }
       throw new Error("Invalid administrative credentials");
     }
-    const result = await api.post<AuthSession>("/admin/login", payload);
-    tokenStore.set(result.token);
+    const result = await api.post<AuthSession>("/admin/login", payload, { scope: "admin" });
+    tokenStore.setAdminToken(result.token);
     return result;
   },
 
   async loginWithEmail(payload: EmailLoginPayload): Promise<AuthSession> {
+    const isMockAdmin =
+      payload.email.trim().toLowerCase().startsWith("admin") ||
+      payload.email.trim().toLowerCase() === "admin@yfjmatrimony.com";
+    if (isMockAdmin) {
+      throw new Error(
+        "Admin accounts cannot login from the member login page. Please access the Admin Portal.",
+      );
+    }
     if (env.useMockApi) {
-      const isAdmin = payload.email.trim().toLowerCase().startsWith("admin");
-      const user = isAdmin ? mockAdmin : { ...mockUser, email: payload.email };
+      const user = { ...mockUser, email: payload.email };
       const result: AuthSession = {
-        token: isAdmin ? "mock-admin-token" : "mock-user-token",
+        token: "mock-user-token",
         user,
       };
-      tokenStore.set(result.token);
+      tokenStore.setUserToken(result.token);
       return delay(result);
     }
-    const result = await api.post<AuthSession>("/auth/login", payload);
-    tokenStore.set(result.token);
+    const result = await api.post<AuthSession>("/auth/login", payload, { scope: "user" });
+    if (result.user.role === "admin") {
+      throw new Error(
+        "Admin accounts cannot login from the member login page. Please access the Admin Portal.",
+      );
+    }
+    tokenStore.setUserToken(result.token);
     return result;
   },
 
@@ -85,18 +96,27 @@ export const authService = {
     if (payload.email) {
       return this.loginWithEmail({ email: payload.email, password: payload.password });
     }
+    const isMockAdmin = (payload.mobile || "").endsWith("0000");
+    if (isMockAdmin) {
+      throw new Error(
+        "Admin accounts cannot login from the member login page. Please access the Admin Portal.",
+      );
+    }
     if (env.useMockApi) {
-      const isAdmin = (payload.mobile || "").endsWith("0000");
-      const user = isAdmin ? mockAdmin : mockUser;
       const result: AuthSession = {
-        token: isAdmin ? "mock-admin-token" : "mock-user-token",
-        user,
+        token: "mock-user-token",
+        user: mockUser,
       };
-      tokenStore.set(result.token);
+      tokenStore.setUserToken(result.token);
       return delay(result);
     }
-    const result = await api.post<AuthSession>("/auth/login", payload);
-    tokenStore.set(result.token);
+    const result = await api.post<AuthSession>("/auth/login", payload, { scope: "user" });
+    if (result.user.role === "admin") {
+      throw new Error(
+        "Admin accounts cannot login from the member login page. Please access the Admin Portal.",
+      );
+    }
+    tokenStore.setUserToken(result.token);
     return result;
   },
 
@@ -106,67 +126,169 @@ export const authService = {
   },
 
   async verifyOtp(mobile: string, otp: string): Promise<AuthSession> {
+    const isMockAdmin = mobile.endsWith("0000");
+    if (isMockAdmin) {
+      throw new Error(
+        "Admin accounts cannot login from the member login page. Please access the Admin Portal.",
+      );
+    }
     if (env.useMockApi) {
-      const isAdmin = mobile.endsWith("0000");
-      const user = isAdmin ? mockAdmin : mockUser;
       const result: AuthSession = {
-        token: isAdmin ? "mock-admin-token" : "mock-user-token",
-        user,
+        token: "mock-user-token",
+        user: mockUser,
       };
-      tokenStore.set(result.token);
+      tokenStore.setUserToken(result.token);
       return delay(result);
     }
-    const result = await api.post<AuthSession>("/auth/otp/verify", { mobile, otp });
-    tokenStore.set(result.token);
+    const result = await api.post<AuthSession>(
+      "/auth/otp/verify",
+      { mobile, otp },
+      { scope: "user" },
+    );
+    if (result.user.role === "admin") {
+      throw new Error(
+        "Admin accounts cannot login from the member login page. Please access the Admin Portal.",
+      );
+    }
+    tokenStore.setUserToken(result.token);
     return result;
   },
 
   async register(payload: RegisterPayload): Promise<AuthSession> {
     if (env.useMockApi) {
-      const result: AuthSession = {
-        token: "mock-user-token",
-        user: { ...mockUser, fullName: payload.fullName, gender: payload.gender, email: payload.email },
+      const newUser: AuthUser = {
+        ...mockUser,
+        id: `u-${Date.now()}`,
+        fullName: payload.fullName,
+        gender: payload.gender,
+        email: payload.email,
+        plan: "free",
+        profileCompletion: 20,
+        profileStatus: "pending", // Must be approved by admin before browsing
       };
-      tokenStore.set(result.token);
+
+      // Add to mockProfiles so admin Users page shows them
+      const { mockProfiles } = await import("@/mocks/data");
+      const photos = mockProfiles[0]?.photos ?? [];
+      mockProfiles.push({
+        id: newUser.id,
+        fullName: newUser.fullName,
+        age: 25,
+        gender: newUser.gender,
+        photos,
+        about: "",
+        height: "—",
+        religion: "—",
+        caste: "—",
+        motherTongue: "—",
+        maritalStatus: "never_married",
+        education: (payload.education as string) ?? "—",
+        occupation: (payload.occupation as string) ?? "—",
+        employmentStatus: "—",
+        incomeRange: "—",
+        city: (payload.city as string) ?? "—",
+        state: (payload.state as string) ?? "—",
+        country: "India",
+        family: {},
+        lastActive: "Online now",
+        verified: false,
+        shortlisted: false,
+        interestSent: false,
+        isConnected: false,
+        canViewContact: false,
+        profileStatus: "pending",
+        isVip: false,
+      });
+
+      // Add to mockAdminUsers so admin can find and approve them
+      const { mockAdminUsers } = await import("@/mocks/data");
+      mockAdminUsers.unshift({
+        id: newUser.id,
+        fullName: newUser.fullName,
+        mobile: payload.mobile ?? "—",
+        gender: newUser.gender,
+        city: (payload.city as string) ?? "—",
+        plan: "free",
+        profileStatus: "pending",
+        joinedAt: new Date().toISOString().split("T")[0]!,
+      });
+
+      const result: AuthSession = { token: "mock-user-token", user: newUser };
+      tokenStore.setUserToken(result.token);
       return delay(result);
     }
-    const result = await api.post<AuthSession>("/auth/register", payload);
-    tokenStore.set(result.token);
+    const result = await api.post<AuthSession>("/auth/register", payload, { scope: "user" });
+    tokenStore.setUserToken(result.token);
     return result;
   },
 
-  async forgotPassword(email: string): Promise<{ sent: boolean; message?: string; devOtp?: string }> {
-    if (env.useMockApi) return delay({ sent: true, message: `Verification code sent to ${email}`, devOtp: "123456" });
+  async forgotPassword(
+    email: string,
+  ): Promise<{ sent: boolean; message?: string; devOtp?: string }> {
+    if (env.useMockApi)
+      return delay({ sent: true, message: `Verification code sent to ${email}`, devOtp: "123456" });
     return api.post("/auth/password/forgot", { email });
   },
 
   async verifyResetOtp(payload: { email: string; otp: string }): Promise<{ valid: boolean }> {
-    if (env.useMockApi) return delay({ valid: payload.otp === "123456" || payload.otp.length === 6 });
+    if (env.useMockApi)
+      return delay({ valid: payload.otp === "123456" || payload.otp.length === 6 });
     return api.post("/auth/password/verify-otp", payload);
   },
 
-  async resetPassword(payload: { email: string; otp: string; password: string }): Promise<{ ok: boolean }> {
+  async resetPassword(payload: {
+    email: string;
+    otp: string;
+    password: string;
+  }): Promise<{ ok: boolean }> {
     if (env.useMockApi) return delay({ ok: true });
     return api.post<{ ok: boolean }>("/auth/password/reset", payload);
   },
 
   async me(): Promise<AuthUser | null> {
+    const token = tokenStore.getUserToken();
+    if (!token) return null;
     if (env.useMockApi) {
-      const token = tokenStore.get();
-      if (!token) return null;
+      if (token === "mock-admin-token") return null;
+      return delay(mockUser, 80);
+    }
+    try {
+      const user = await api.get<AuthUser>("/auth/me", { scope: "user" });
+      if (user.role === "admin") return null;
+      return user;
+    } catch {
+      return null;
+    }
+  },
+
+  async adminMe(): Promise<AuthUser | null> {
+    const token = tokenStore.getAdminToken();
+    if (!token) return null;
+    if (env.useMockApi) {
       if (token === "mock-admin-token") {
         return delay(mockAdmin, 80);
       }
-      return delay(mockUser, 80);
+      return null;
     }
-    if (!tokenStore.get()) return null;
-    return api.get<AuthUser>("/auth/me");
+    try {
+      const user = await api.get<AuthUser>("/admin/me", { scope: "admin" });
+      if (user.role !== "admin") return null;
+      return user;
+    } catch {
+      return null;
+    }
   },
 
   async logout(): Promise<void> {
-    tokenStore.clear();
+    tokenStore.clearUserToken();
     if (env.useMockApi) return delay(undefined, 50);
-    await api.post("/auth/logout").catch(() => {});
+    await api.post("/auth/logout", undefined, { scope: "user" }).catch(() => {});
+  },
+
+  async logoutAdmin(): Promise<void> {
+    tokenStore.clearAdminToken();
+    if (env.useMockApi) return delay(undefined, 50);
+    await api.post("/admin/logout", undefined, { scope: "admin" }).catch(() => {});
   },
 
   async getPreferences(): Promise<Record<string, boolean>> {
@@ -174,9 +296,9 @@ export const authService = {
       interests: true,
       messages: true,
       matches: false,
-      photo: true,
+      photo: false,
       contact: true,
-      online: false,
+      online: true,
     };
     if (env.useMockApi) {
       if (typeof window === "undefined") return defaults;

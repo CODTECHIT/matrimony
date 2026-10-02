@@ -49,8 +49,8 @@ function SearchPage() {
       <div className="relative w-full min-w-0">
         <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#C59B27]" />
         <Input
-          placeholder="Search by name or profile ID"
-          aria-label="Search by name or profile ID"
+          placeholder="Search by name or profile ID (e.g. P1, P2)"
+          aria-label="Search by name or profile ID (e.g. P1, P2)"
           className="h-12 rounded-full pl-11 border-2 border-[#E5C05B]/85 shadow-[0_2px_12px_rgba(229,192,91,0.18)] focus-visible:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#E5C05B]/40 w-full min-w-0"
           value={filters.query ?? ""}
           onChange={(event) =>

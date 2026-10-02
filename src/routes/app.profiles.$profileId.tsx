@@ -1,22 +1,34 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useParams, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import useEmblaCarousel from "embla-carousel-react";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   Bookmark,
   Briefcase,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Heart,
   Lock,
   MapPin,
+  MessageCircle,
   MoreVertical,
   Phone,
+  Share2,
+  UserMinus,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { LoadingState, ErrorState } from "@/components/common/states";
-import { profilesService, subscriptionsService } from "@/services";
+import { messagesService, profilesService, subscriptionsService } from "@/services";
 import type { Profile } from "@/types";
 import { getProfileAvatar, handleImageError } from "@/lib/images";
 
@@ -51,6 +63,37 @@ function ProfileDetailsPage() {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [bookmarked, setBookmarked] = useState(false);
   const [bioExpanded, setBioExpanded] = useState(false);
+  const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: false,
+    dragFree: false,
+    containScroll: "trimSnaps",
+  });
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setPhotoIndex(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    onSelect();
+    emblaApi.on("select", onSelect);
+    emblaApi.on("reInit", onSelect);
+    return () => {
+      emblaApi.off("select", onSelect);
+      emblaApi.off("reInit", onSelect);
+    };
+  }, [emblaApi, onSelect]);
+
+  useEffect(() => {
+    if (emblaApi) {
+      emblaApi.reInit();
+      emblaApi.scrollTo(0, true);
+    }
+    setPhotoIndex(0);
+  }, [profileId, emblaApi]);
 
   const profileQuery = useQuery({
     queryKey: ["profile", profileId],
@@ -60,9 +103,46 @@ function ProfileDetailsPage() {
     queryKey: ["subscription"],
     queryFn: () => subscriptionsService.current(),
   });
+  const conversationsQuery = useQuery({
+    queryKey: ["conversations"],
+    queryFn: () => messagesService.conversations(),
+  });
 
   if (profileQuery.isPending) return <LoadingState label="Loading profile" />;
   if (profileQuery.isError || !profileQuery.data) {
+    const errorMsg =
+      profileQuery.error instanceof Error ? profileQuery.error.message : "";
+    if (errorMsg.startsWith("DAILY_LIMIT_EXCEEDED")) {
+      const parts = errorMsg.split(":");
+      const limit = parts[1] || "your plan's";
+      const tier = parts[2] || "current";
+      return (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center text-center px-4 space-y-4">
+          <span className="flex size-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/40">
+            <Lock className="size-8 text-amber-600" />
+          </span>
+          <h2 className="font-display text-2xl font-bold text-foreground">
+            Daily Profile Views Reached
+          </h2>
+          <p className="max-w-md text-sm text-muted-foreground leading-relaxed">
+            You have reached your daily limit of {limit} profile views on the{" "}
+            <span className="font-semibold capitalize text-foreground">{tier}</span> membership.
+            Upgrade your package to unlock more daily profile views.
+          </p>
+          <div className="flex gap-3 pt-2">
+            <Button
+              asChild
+              className="rounded-full bg-[#D92662] hover:bg-[#C2185B] text-white font-bold px-6"
+            >
+              <Link to="/app/upgrade">Upgrade Plan</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-full">
+              <Link to="/app/browse">Back to Browse</Link>
+            </Button>
+          </div>
+        </div>
+      );
+    }
     return (
       <ErrorState
         title="Profile unavailable"
@@ -73,7 +153,92 @@ function ProfileDetailsPage() {
   }
 
   const profile = profileQuery.data;
-  const canViewContact = profile.canViewContact;
+  const rawPhotos = profile.photos?.filter(Boolean);
+  const photos = rawPhotos && rawPhotos.length > 0 ? rawPhotos : [""];
+
+  const scrollPrev = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (emblaApi) emblaApi.scrollPrev();
+    else setPhotoIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  const scrollNext = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (emblaApi) emblaApi.scrollNext();
+    else setPhotoIndex((prev) => Math.min(photos.length - 1, prev + 1));
+  };
+
+  const handleScrollTo = (idx: number) => {
+    if (emblaApi) emblaApi.scrollTo(idx);
+    else setPhotoIndex(idx);
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointerStartRef.current) return;
+    const dx = Math.abs(e.clientX - pointerStartRef.current.x);
+    const dy = Math.abs(e.clientY - pointerStartRef.current.y);
+    const dt = Date.now() - pointerStartRef.current.time;
+    pointerStartRef.current = null;
+
+    // If pointer moved more than 8px or was held down longer than 400ms, it's a swipe/drag, NOT a tap!
+    if (dx > 8 || dy > 8 || dt > 400) return;
+    if (photos.length <= 1) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const ratio = clickX / rect.width;
+
+    if (ratio < 0.35) {
+      scrollPrev();
+    } else if (ratio > 0.65) {
+      scrollNext();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      scrollPrev();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      scrollNext();
+    }
+  };
+
+  // FIX 3: Contact visibility must be driven by the viewer's subscription permission,
+  // not a field on the profile itself. Backend controls canViewContacts per subscription.
+  const canViewContact =
+    (subscriptionQuery.data?.permissions.canViewContacts === true) && !!profile.contact;
+
+  const existingConv = conversationsQuery.data?.find(
+    (c) =>
+      c.participant.id === profile.id ||
+      (profile.displayId && c.participant.displayId === profile.displayId) ||
+      c.participant.id === profileId ||
+      c.participant.displayId === profileId,
+  );
+  const isConnected = Boolean(profile.isConnected || existingConv);
+  const conversationId = profile.conversationId || existingConv?.id;
+
+  const handleOpenChat = async () => {
+    try {
+      let convId = conversationId;
+      if (!convId) {
+        const res = await messagesService.start(profile.id, profile.fullName, profile.photos);
+        convId = res.id;
+      }
+      void navigate({
+        to: "/app/messages/$conversationId",
+        params: { conversationId: convId },
+      });
+    } catch {
+      toast.error("Could not open chat with this member");
+    }
+  };
 
   const shortlist = async () => {
     queryClient.setQueryData(["profile", profileId], (old: Profile | undefined) => {
@@ -107,9 +272,32 @@ function ProfileDetailsPage() {
     }
   };
 
+  const handleUnfriend = async () => {
+    if (!profile) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to unfriend and remove connection with ${profile.fullName}?`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await profilesService.unfriend(profile.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["profile", profileId] }),
+        queryClient.invalidateQueries({ queryKey: ["interests"] }),
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+        queryClient.invalidateQueries({ queryKey: ["profiles"] }),
+      ]);
+      toast.success(`Unfriended ${profile.fullName}. Connection removed.`);
+    } catch {
+      toast.error("Failed to unfriend.");
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-36 lg:pb-12">
-      {/* Top Header matching Screen 8 */}
+    <div className="mx-auto max-w-6xl space-y-6 pb-36 lg:pb-12">
+      {/* Top Header */}
       <div className="sticky top-0 z-30 flex items-center justify-between -mx-4 px-4 py-3 bg-background/95 backdrop-blur-md border-b border-border/60 sm:mx-0 sm:px-0 sm:border-0 sm:bg-transparent">
         <button
           type="button"
@@ -119,66 +307,279 @@ function ProfileDetailsPage() {
         >
           <ArrowLeft className="size-5" />
         </button>
-        <h1 className="font-sans text-lg font-bold text-foreground">Profile Details</h1>
-        <button
-          type="button"
-          className="grid size-10 place-items-center rounded-full text-foreground hover:bg-muted transition-colors cursor-pointer"
-          aria-label="More options"
-        >
-          <MoreVertical className="size-5" />
-        </button>
+        <h1 className="font-sans text-lg font-bold text-foreground">
+          Profile Details · {profile.displayId || profile.id}
+        </h1>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="grid size-10 place-items-center rounded-full text-foreground hover:bg-muted transition-colors cursor-pointer"
+              aria-label="More options"
+            >
+              <MoreVertical className="size-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48 rounded-2xl p-1.5 shadow-lg">
+            <DropdownMenuItem
+              onClick={() => {
+                void navigator.clipboard?.writeText(window.location.href);
+                toast.success("Profile link copied to clipboard");
+              }}
+              className="rounded-xl cursor-pointer flex items-center gap-2"
+            >
+              <Share2 className="size-4" />
+              Copy Profile Link
+            </DropdownMenuItem>
+            {isConnected && (
+              <DropdownMenuItem
+                onClick={handleUnfriend}
+                className="rounded-xl cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"
+              >
+                <UserMinus className="size-4" />
+                Unfriend / Disconnect
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={() => toast.info("Report submitted to moderation")}
+              className="rounded-xl cursor-pointer text-muted-foreground hover:text-foreground"
+            >
+              Report Profile
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Main Grid: Responsive 2-column on desktop (lg:grid-cols-12), stacked on mobile */}
-      <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-start">
-        {/* Left Column: Photo Gallery & Desktop Actions (Sticky on desktop) */}
-        <div className="lg:col-span-5 lg:sticky lg:top-24 space-y-4">
-          {/* Hero Photo Carousel Card matching Screen 8 */}
-          <div className="relative overflow-hidden rounded-3xl bg-card shadow-card">
-            <img
-              src={getProfileAvatar(profile.photos[photoIndex] ?? profile.photos[0], profile.gender)}
-              alt={profile.fullName}
-              width={800}
-              height={1000}
-              onError={(e) => handleImageError(e, profile.gender)}
-              className="aspect-[4/5] w-full object-cover max-h-[500px]"
-            />
+      {/* ── DESKTOP: rich 2-column layout ── */}
+      <div className="lg:grid lg:grid-cols-12 lg:gap-7 items-start">
 
-            {/* Photo count indicator badge: e.g. 1/5 */}
-            <span className="absolute right-4 top-4 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur-md">
-              {photoIndex + 1}/{profile.photos.length || 1}
-            </span>
+        {/* ── LEFT: Photo card with gradient overlay (sticky) ── */}
+        <div className="lg:col-span-5 lg:sticky lg:top-24">
 
-            {/* Multiple photos indicator dots */}
-            {profile.photos.length > 1 ? (
-              <div className="absolute bottom-4 inset-x-0 flex justify-center gap-1.5">
-                {profile.photos.map((_, idx) => (
-                  <button
+          {/* Photo + overlaid name/actions card */}
+          <div
+            className="relative overflow-hidden rounded-3xl shadow-xl bg-black group select-none focus:outline-none"
+            tabIndex={0}
+            onKeyDown={handleKeyDown}
+          >
+            {/* Carousel Viewport (Swipeable with touch or mouse drag) */}
+            <div
+              ref={emblaRef}
+              onPointerDown={handlePointerDown}
+              onPointerUp={handlePointerUp}
+              className="overflow-hidden w-full cursor-grab active:cursor-grabbing touch-pan-y"
+            >
+              <div className="flex touch-pan-y">
+                {photos.map((src, idx) => (
+                  <div
                     key={idx}
-                    type="button"
-                    onClick={() => setPhotoIndex(idx)}
-                    className={`size-2 rounded-full transition-all cursor-pointer ${
-                      idx === photoIndex ? "w-6 bg-white" : "bg-white/50"
-                    }`}
-                    aria-label={`Photo ${idx + 1}`}
-                  />
+                    className="min-w-0 shrink-0 grow-0 basis-full relative overflow-hidden"
+                    style={{ aspectRatio: "3/4", maxHeight: "620px" }}
+                  >
+                    <img
+                      src={getProfileAvatar(src, profile.gender)}
+                      alt={`${profile.fullName} photo ${idx + 1}`}
+                      width={800}
+                      height={1000}
+                      onError={(e) => handleImageError(e, profile.gender)}
+                      className="size-full object-cover select-none pointer-events-none"
+                      draggable={false}
+                    />
+                  </div>
                 ))}
               </div>
-            ) : null}
+            </div>
+
+            {/* Photo count badge */}
+            <span className="absolute right-4 top-4 z-20 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur-md pointer-events-none">
+              {photoIndex + 1}/{photos.length}
+            </span>
+
+            {/* Bookmark button top-left */}
+            <button
+              type="button"
+              onClick={() => {
+                setBookmarked((v) => !v);
+                toast.success(!bookmarked ? "Bookmarked profile" : "Bookmark removed");
+              }}
+              aria-label="Bookmark profile"
+              className={`absolute left-4 top-4 z-20 grid size-9 place-items-center rounded-full border backdrop-blur-md transition-all cursor-pointer ${
+                bookmarked
+                  ? "border-[#D92662] bg-rose-600/80 text-white"
+                  : "border-white/30 bg-black/40 text-white hover:bg-white/20"
+              }`}
+            >
+              <Bookmark className={`size-4 ${bookmarked ? "fill-current" : ""}`} />
+            </button>
+
+            {/* Prev / Next arrows for click navigation */}
+            {photos.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={scrollPrev}
+                  disabled={photoIndex === 0}
+                  aria-label="Previous photo"
+                  className={`absolute left-3 top-1/2 -translate-y-1/2 z-20 grid size-10 place-items-center rounded-full bg-black/50 text-white backdrop-blur-md transition-all hover:bg-black/80 cursor-pointer ${
+                    photoIndex === 0
+                      ? "opacity-0 pointer-events-none"
+                      : "opacity-0 group-hover:opacity-100 focus:opacity-100 sm:opacity-80"
+                  }`}
+                >
+                  <ChevronLeft className="size-6" />
+                </button>
+                <button
+                  type="button"
+                  onClick={scrollNext}
+                  disabled={photoIndex === photos.length - 1}
+                  aria-label="Next photo"
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 z-20 grid size-10 place-items-center rounded-full bg-black/50 text-white backdrop-blur-md transition-all hover:bg-black/80 cursor-pointer ${
+                    photoIndex === photos.length - 1
+                      ? "opacity-0 pointer-events-none"
+                      : "opacity-0 group-hover:opacity-100 focus:opacity-100 sm:opacity-80"
+                  }`}
+                >
+                  <ChevronRight className="size-6" />
+                </button>
+              </>
+            )}
+
+            {/* Bottom gradient overlay */}
+            <div className="absolute inset-x-0 bottom-0 z-10 pointer-events-none bg-gradient-to-t from-black/95 via-black/55 to-transparent pt-28 pb-5 px-5">
+              {/* Dot indicators */}
+              {photos.length > 1 && (
+                <div className="flex justify-center gap-1.5 mb-3 pointer-events-auto">
+                  {photos.map((_, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleScrollTo(idx)}
+                      className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                        idx === photoIndex ? "w-6 bg-white" : "w-1.5 bg-white/50 hover:bg-white/75"
+                      }`}
+                      aria-label={`Photo ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Name & basic info */}
+              <div className="flex items-end justify-between gap-2 mb-1">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-sans text-2xl font-bold text-white leading-tight">
+                      {profile.fullName.split(" ")[0]}, {profile.age}
+                    </h2>
+                    {profile.verified && (
+                      <span
+                        className="flex size-5 items-center justify-center rounded-full bg-amber-400 shadow-xs"
+                        title="Verified Profile"
+                      >
+                        <Check className="size-3 stroke-[3] text-white" />
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/80">
+                    {profile.occupation && (
+                      <span className="flex items-center gap-1">
+                        <Briefcase className="size-3" />
+                        {profile.occupation}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <MapPin className="size-3" />
+                      {profile.city}, {profile.state}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick pills */}
+              <div className="flex flex-wrap gap-1.5 mt-2 mb-4">
+                <span className="rounded-full bg-amber-400/25 border border-amber-300/40 px-2.5 py-1 text-[11px] font-bold text-amber-200">
+                  ID: {profile.displayId || profile.id}
+                </span>
+                {[profile.height, profile.religion, profile.caste].filter(Boolean).map((pill) => (
+                  <span
+                    key={pill}
+                    className="rounded-full bg-white/15 border border-white/20 px-2.5 py-1 text-[11px] font-semibold text-white/90"
+                  >
+                    {pill}
+                  </span>
+                ))}
+              </div>
+
+              {/* Action buttons row — embedded in photo */}
+              <div className="flex items-center gap-2.5 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => void navigate({ to: "/app/browse" })}
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full border-2 border-white/30 bg-white/10 backdrop-blur-md text-white hover:bg-white/20 transition-colors cursor-pointer"
+                  title="Pass"
+                >
+                  <X className="size-5" />
+                </button>
+
+                {isConnected ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenChat()}
+                    className="flex flex-1 h-11 items-center justify-center gap-2 rounded-full bg-[#D92662] hover:bg-[#C2185B] text-white font-bold text-sm shadow-lg cursor-pointer transition-colors"
+                  >
+                    <MessageCircle className="size-4" />
+                    Message
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={sendInterest}
+                    disabled={profile.interestSent}
+                    className="flex flex-1 h-11 items-center justify-center gap-2 rounded-full bg-[#C59B27] hover:bg-[#B38A20] text-white font-bold text-sm shadow-lg cursor-pointer transition-colors disabled:opacity-70"
+                  >
+                    <Heart className="size-4 fill-white" />
+                    {profile.interestSent ? "Interest Sent" : "Send Interest"}
+                  </button>
+                )}
+
+                {isConnected && (
+                  <button
+                    type="button"
+                    onClick={handleUnfriend}
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full border-2 border-rose-400/50 bg-rose-500/20 backdrop-blur-md text-rose-300 hover:bg-rose-500/30 transition-colors cursor-pointer"
+                    title="Unfriend"
+                  >
+                    <UserMinus className="size-4" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={shortlist}
+                  aria-label="Shortlist profile"
+                  className={`flex size-11 shrink-0 items-center justify-center rounded-full border-2 backdrop-blur-md transition-colors cursor-pointer ${
+                    profile.shortlisted
+                      ? "border-[#D92662] bg-[#D92662] text-white"
+                      : "border-white/30 bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                >
+                  <Heart className={`size-4 ${profile.shortlisted ? "fill-white" : ""}`} />
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Desktop Thumbnail Gallery */}
-          {profile.photos.length > 1 ? (
-            <div className="hidden lg:flex gap-2 overflow-x-auto pb-1">
-              {profile.photos.map((src, idx) => (
+          {/* Thumbnail strip (only if multiple photos) */}
+          {photos.length > 1 && (
+            <div className="hidden lg:flex gap-2 mt-3 overflow-x-auto pb-1">
+              {photos.map((src, idx) => (
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => setPhotoIndex(idx)}
+                  onClick={() => handleScrollTo(idx)}
                   className={`relative size-16 shrink-0 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                     idx === photoIndex
                       ? "border-[#D92662] scale-105"
-                      : "border-transparent opacity-70 hover:opacity-100"
+                      : "border-transparent opacity-60 hover:opacity-100"
                   }`}
                 >
                   <img
@@ -190,107 +591,18 @@ function ProfileDetailsPage() {
                 </button>
               ))}
             </div>
-          ) : null}
-
-          {/* Desktop Action Buttons (Visible on desktop, replaces floating bottom bar) */}
-          <div className="hidden lg:flex items-center gap-3 pt-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => void navigate({ to: "/app/browse" })}
-              className="size-12 rounded-2xl border-rose-200 text-rose-500 hover:bg-rose-50 cursor-pointer"
-              title="Pass"
-            >
-              <X className="size-5" />
-            </Button>
-            <Button
-              onClick={sendInterest}
-              disabled={profile.interestSent}
-              className="flex-1 rounded-2xl bg-[#C59B27] hover:bg-[#B38A20] text-white font-bold h-12 shadow-sm cursor-pointer"
-            >
-              <Heart className="size-4 fill-white mr-2" />
-              {profile.interestSent ? "Interest Sent" : "Send Interest"}
-            </Button>
-            <Button
-              size="icon"
-              onClick={shortlist}
-              className={`size-12 rounded-2xl text-white shadow-sm cursor-pointer ${
-                profile.shortlisted ? "bg-[#D92662]" : "bg-[#D92662] hover:bg-[#C2185B]"
-              }`}
-              title="Shortlist"
-            >
-              <Heart className="size-5 fill-white" />
-            </Button>
-          </div>
+          )}
         </div>
 
-        {/* Right Column: Profile Details */}
-        <div className="lg:col-span-7 mt-6 lg:mt-0 space-y-5 rounded-3xl bg-white p-6 shadow-card border border-border">
-          {/* Name, Verified Badge & Bookmark */}
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-sans text-2xl sm:text-3xl font-bold text-foreground">
-                  {profile.fullName.split(" ")[0]}, {profile.age}
-                </h2>
-                {profile.verified ? (
-                  <span
-                    className="flex size-5.5 items-center justify-center rounded-full bg-gold text-gold-foreground shadow-xs"
-                    title="Verified Profile"
-                  >
-                    <Check className="size-3.5 stroke-[3]" />
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="size-4 text-muted-foreground" />
-                  <span>{profile.occupation}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="size-4 text-muted-foreground" />
-                  <span>
-                    {profile.city}, {profile.state}
-                  </span>
-                </div>
-              </div>
-            </div>
+        {/* ── RIGHT: Details panel ── */}
+        <div className="lg:col-span-7 mt-6 lg:mt-0 space-y-4">
 
-            <button
-              type="button"
-              onClick={() => {
-                setBookmarked((v) => !v);
-                toast.success(!bookmarked ? "Bookmarked profile" : "Bookmark removed");
-              }}
-              aria-label="Bookmark profile"
-              className={`grid size-11 place-items-center rounded-2xl border transition-all cursor-pointer ${
-                bookmarked
-                  ? "border-[#D92662] bg-rose-50 text-[#D92662]"
-                  : "border-border bg-white text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <Bookmark className={`size-5 ${bookmarked ? "fill-current" : ""}`} />
-            </button>
-          </div>
-
-          {/* Soft Pastel Pills matching Screen 8 */}
-          <div className="flex flex-wrap gap-2 pt-1 border-b border-border/80 pb-5">
-            {[profile.height, profile.religion, profile.caste].map((pill) => (
-              <span
-                key={pill}
-                className="rounded-full bg-rose-50/90 border border-rose-100 px-4 py-1.5 text-xs font-semibold text-foreground/90"
-              >
-                {pill}
-              </span>
-            ))}
-          </div>
-
-          {/* About Section matching Screen 8 */}
-          <div className="space-y-2">
-            <h3 className="font-sans text-base font-bold text-foreground">About</h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {bioExpanded ? profile.about : `${profile.about.slice(0, 120)}...`}
-              {profile.about.length > 120 ? (
+          {/* About card */}
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+            <h3 className="font-sans text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">About</h3>
+            <p className="text-sm leading-relaxed text-foreground/80">
+              {bioExpanded ? profile.about : `${(profile.about || "").slice(0, 200)}...`}
+              {(profile.about || "").length > 200 ? (
                 <button
                   type="button"
                   onClick={() => setBioExpanded((v) => !v)}
@@ -302,31 +614,126 @@ function ProfileDetailsPage() {
             </p>
           </div>
 
-          {/* Basic Details Section */}
-          <div className="space-y-2 pt-2 border-t border-border/80">
-            <div className="flex items-center justify-between">
-              <h3 className="font-sans text-base font-bold text-foreground">Basic Details</h3>
-              <span className="text-xs font-semibold text-[#D92662]">View all</span>
-            </div>
-            <dl className="space-y-1">
-              <DetailRow label="Height" value={profile.height} />
-              <DetailRow label="Religion" value={profile.religion} />
-              <DetailRow label="Caste" value={profile.caste} />
-              <DetailRow label="Mother Tongue" value={profile.motherTongue} />
-              <DetailRow label="Marital Status" value={profile.maritalStatus.replace(/_/g, " ")} />
-              <DetailRow label="Education" value={profile.education} />
+          {/* Basic Details — 2-column grid */}
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+            <h3 className="font-sans text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Basic Details</h3>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-0 divide-y-0">
+              {(
+                [
+                  ["Height", profile.height],
+                  ["Religion", profile.religion],
+                  ["Caste", profile.caste],
+                  ["Mother Tongue", profile.motherTongue],
+                  ["Marital Status", profile.maritalStatus?.replace(/_/g, " ")],
+                  ["Age", profile.age ? `${profile.age} Years` : undefined],
+                ] as [string, string | undefined][]
+              ).map(([label, value]) => (
+                <div key={label} className="flex flex-col py-2.5 border-b border-border/50 last:border-0">
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd className="text-sm font-semibold text-foreground mt-0.5">{value || "—"}</dd>
+                </div>
+              ))}
             </dl>
           </div>
 
-          {/* Contact info with protection lock */}
-          <div className="rounded-2xl border border-border bg-stone-50/70 dark:bg-stone-900/60 p-4 space-y-2.5">
-            <h3 className="font-sans text-base font-bold text-foreground">Contact Details</h3>
+          {/* Education & Profession — 2-column grid */}
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+            <h3 className="font-sans text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Education & Profession</h3>
+            <dl className="grid grid-cols-2 gap-x-6">
+              {(
+                [
+                  ["Qualification", profile.education],
+                  ["Occupation", profile.occupation],
+                  ["Employment", profile.employmentStatus],
+                  ["Annual Income", profile.incomeRange],
+                ] as [string, string | undefined][]
+              ).map(([label, value]) => (
+                <div key={label} className="flex flex-col py-2.5 border-b border-border/50 last:border-0">
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd className="text-sm font-semibold text-foreground mt-0.5">{value || "—"}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          {/* Location & Family — side by side cards */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+              <h3 className="font-sans text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Location</h3>
+              <dl className="space-y-2.5">
+                {(
+                  [
+                    ["City", profile.city],
+                    ["State", profile.state],
+                    ["Country", profile.country || "India"],
+                  ] as [string, string | undefined][]
+                ).map(([label, value]) => (
+                  <div key={label} className="flex flex-col">
+                    <dt className="text-xs text-muted-foreground">{label}</dt>
+                    <dd className="text-sm font-semibold text-foreground mt-0.5">{value || "—"}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+              <h3 className="font-sans text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Family</h3>
+              <dl className="space-y-2.5">
+                {(
+                  [
+                    ["Family Type", profile.family?.familyType],
+                    ["Family Values", profile.family?.familyValues],
+                    ["Siblings", profile.family?.siblings],
+                  ] as [string, string | undefined][]
+                ).map(([label, value]) => (
+                  <div key={label} className="flex flex-col">
+                    <dt className="text-xs text-muted-foreground">{label}</dt>
+                    <dd className="text-sm font-semibold text-foreground mt-0.5">{value || "—"}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+
+          {/* Parents occupation - full width */}
+          {(profile.family?.fatherOccupation || profile.family?.motherOccupation) && (
+            <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
+              <h3 className="font-sans text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Parents</h3>
+              <dl className="grid grid-cols-2 gap-x-6">
+                {(
+                  [
+                    ["Father's Occupation", profile.family?.fatherOccupation],
+                    ["Mother's Occupation", profile.family?.motherOccupation],
+                  ] as [string, string | undefined][]
+                ).map(([label, value]) => (
+                  <div key={label} className="flex flex-col">
+                    <dt className="text-xs text-muted-foreground">{label}</dt>
+                    <dd className="text-sm font-semibold text-foreground mt-0.5">{value || "—"}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {/* Contact Details card */}
+          <div className="rounded-2xl border border-border bg-gradient-to-br from-rose-50/60 to-amber-50/40 p-5 shadow-sm">
+            <h3 className="font-sans text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Contact Details</h3>
             {canViewContact && profile.contact ? (
-              <p className="flex items-center gap-2 text-sm font-semibold text-[#D92662]">
-                <Phone className="size-4" /> {profile.contact.mobile}
-              </p>
+              <div className="space-y-2">
+                <p className="flex items-center gap-2 text-sm font-semibold text-[#D92662]">
+                  <Phone className="size-4" /> {profile.contact.mobile}
+                </p>
+                {profile.contact.whatsapp ? (
+                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-600">
+                    <span className="size-4 flex items-center justify-center font-bold text-xs bg-emerald-600 text-white rounded-full">
+                      W
+                    </span>
+                    WhatsApp: {profile.contact.whatsapp}
+                  </p>
+                ) : null}
+              </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-4">
                 <p className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Lock className="size-4 shrink-0 text-[#C59B27]" />
                   <span>Contact details are protected by privacy policy.</span>
@@ -334,15 +741,16 @@ function ProfileDetailsPage() {
                 <Button
                   asChild
                   size="sm"
-                  className="rounded-full bg-[#C59B27] hover:bg-[#B38A20] text-white text-xs font-semibold px-4 shadow-xs"
+                  className="shrink-0 rounded-full bg-[#C59B27] hover:bg-[#B38A20] text-white text-xs font-semibold px-4 shadow-xs"
                 >
-                  <Link to="/app/upgrade">Upgrade to View Contact</Link>
+                  <Link to="/app/upgrade">Upgrade to View</Link>
                 </Button>
               </div>
             )}
           </div>
         </div>
       </div>
+
 
       {/* Floating Bottom Action Bar matching Screen 8 (Mobile only - hidden on lg) */}
       <div className="fixed inset-x-0 bottom-6 z-40 px-4 lg:hidden pointer-events-none">
@@ -357,16 +765,40 @@ function ProfileDetailsPage() {
             <X className="size-6 stroke-[2.5]" />
           </button>
 
-          {/* Send Interest Gold Pill Button */}
-          <button
-            type="button"
-            onClick={sendInterest}
-            disabled={profile.interestSent}
-            className="flex h-14 flex-1 items-center justify-center gap-2.5 rounded-full bg-[#C59B27] hover:bg-[#B38A20] px-6 text-base font-bold text-white shadow-xl shadow-amber-950/20 transition-transform active:scale-[0.98] disabled:opacity-75 cursor-pointer"
-          >
-            <Heart className="size-5 fill-white" />
-            <span>{profile.interestSent ? "Interest Sent" : "Send Interest"}</span>
-          </button>
+          {isConnected ? (
+            /* Message Pill Button — user is already connected */
+            <button
+              type="button"
+              onClick={() => void handleOpenChat()}
+              className="flex h-14 flex-1 items-center justify-center gap-2.5 rounded-full bg-[#D92662] hover:bg-[#C2185B] px-6 text-base font-bold text-white shadow-xl shadow-rose-950/20 transition-transform active:scale-[0.98] cursor-pointer"
+            >
+              <MessageCircle className="size-5" />
+              <span>Message</span>
+            </button>
+          ) : (
+            /* Send Interest Gold Pill Button */
+            <button
+              type="button"
+              onClick={sendInterest}
+              disabled={profile.interestSent}
+              className="flex h-14 flex-1 items-center justify-center gap-2.5 rounded-full bg-[#C59B27] hover:bg-[#B38A20] px-6 text-base font-bold text-white shadow-xl shadow-amber-950/20 transition-transform active:scale-[0.98] disabled:opacity-75 cursor-pointer"
+            >
+              <Heart className="size-5 fill-white" />
+              <span>{profile.interestSent ? "Interest Sent" : "Send Interest"}</span>
+            </button>
+          )}
+
+          {isConnected && (
+            <button
+              type="button"
+              onClick={handleUnfriend}
+              className="flex size-14 shrink-0 items-center justify-center rounded-full border-2 border-rose-300 bg-white text-rose-600 shadow-xl transition-transform active:scale-95 hover:bg-rose-50 cursor-pointer"
+              title="Unfriend and remove connection"
+              aria-label="Unfriend"
+            >
+              <UserMinus className="size-5" />
+            </button>
+          )}
 
           {/* Shortlist Pink Heart Circle Button */}
           <button

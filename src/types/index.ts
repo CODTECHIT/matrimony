@@ -14,6 +14,7 @@ export interface ApiListResponse<T> {
 
 export interface AuthUser {
   id: string;
+  displayId?: string;
   fullName: string;
   email?: string;
   mobile?: string;
@@ -22,6 +23,8 @@ export interface AuthUser {
   avatarUrl?: string;
   profileCompletion: number;
   plan: PlanTier;
+  /** Set by backend/admin. "pending" = waiting for admin approval; "blocked" = suspended. */
+  profileStatus?: "pending" | "approved" | "blocked";
 }
 
 export interface AuthSession {
@@ -39,6 +42,7 @@ export interface FamilyDetails {
 
 export interface Profile {
   id: string;
+  displayId?: string;
   fullName: string;
   age: number;
   gender: Gender;
@@ -62,6 +66,10 @@ export interface Profile {
   lastActive: string;
   shortlisted: boolean;
   interestSent: boolean;
+  /** True when the interest has been mutually accepted — i.e. they are connected/friends. */
+  isConnected: boolean;
+  /** Present when isConnected is true — links to the shared conversation. */
+  conversationId?: string;
   /** Backend-controlled. The UI must never infer contact access itself. */
   canViewContact: boolean;
   contact?: { mobile: string; whatsapp?: string };
@@ -69,6 +77,10 @@ export interface Profile {
   matchScore?: number;
   /** Percentage of profile completed (0-100%) */
   profileCompletion?: number;
+  /** Admin-controlled approval state. Only "approved" profiles appear in browse. */
+  profileStatus?: "pending" | "approved" | "blocked";
+  /** True if the profile owner has profileHighlight/VIP permission on their subscription. */
+  isVip?: boolean;
 }
 
 export interface ProfileFilters {
@@ -94,6 +106,7 @@ export interface Interest {
   profile: Profile;
   status: InterestStatus;
   sentAt: string;
+  conversationId?: string;
 }
 
 export interface Plan {
@@ -120,6 +133,7 @@ export interface Subscription {
   startedAt?: string;
   expiresAt?: string;
   autoRenew: boolean;
+  limits?: { profileViews: string; interests: string; messaging: string; contacts: string };
   permissions: {
     canMessage: boolean;
     canViewContacts: boolean;
@@ -130,7 +144,7 @@ export interface Subscription {
 
 export interface Conversation {
   id: string;
-  participant: Pick<Profile, "id" | "fullName" | "photos">;
+  participant: Pick<Profile, "id" | "displayId" | "fullName" | "photos">;
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
@@ -157,6 +171,7 @@ export interface AdminStats {
 
 export interface AdminUserRow {
   id: string;
+  displayId?: string;
   fullName: string;
   mobile: string;
   gender: Gender;

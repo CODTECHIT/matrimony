@@ -8,6 +8,10 @@ export function delay<T>(value: T, ms = 320): Promise<T> {
 
 const shortlisted = new Set<string>(["p-3"]);
 const interests = new Set<string>(["p-2"]);
+/** Profiles whose interest was accepted — the user is now connected/friends with them. */
+const connected = new Set<string>(["p-2", "p-6"]);
+/** Maps a profile id to the conversation id shared with the current user. */
+const conversationIds: Record<string, string> = { "p-2": "c-1", "p-6": "c-2" };
 
 export const mockState = {
   isShortlisted: (id: string) => shortlisted.has(id),
@@ -20,14 +24,19 @@ export const mockState = {
   sendInterest(id: string) {
     interests.add(id);
   },
+  isConnected: (id: string) => connected.has(id),
+  getConversationId: (id: string) => conversationIds[id],
   shortlistedIds: () => [...shortlisted],
 };
 
 function decorate(profile: Profile): Profile {
+  const convId = mockState.getConversationId(profile.id);
   return {
     ...profile,
     shortlisted: mockState.isShortlisted(profile.id),
     interestSent: mockState.hasInterest(profile.id),
+    isConnected: mockState.isConnected(profile.id),
+    ...(convId !== undefined ? { conversationId: convId } : {}),
   };
 }
 
@@ -49,7 +58,10 @@ export function filterProfiles(filters: ProfileFilters) {
     pageSize = 12,
   } = filters;
 
-  let items = mockProfiles.map(decorate);
+  // FIX 1: Only show profiles approved by admin. Profiles without a status (old data) are allowed.
+  let items = mockProfiles
+    .filter((p) => !p.profileStatus || p.profileStatus === "approved")
+    .map(decorate);
 
   if (query) {
     const q = query.toLowerCase();
@@ -69,7 +81,11 @@ export function filterProfiles(filters: ProfileFilters) {
   if (city) items = items.filter((p) => p.city === city);
 
   if (sort === "age_asc") items = [...items].sort((a, b) => a.age - b.age);
-  if (sort === "age_desc") items = [...items].sort((a, b) => b.age - a.age);
+  else if (sort === "age_desc") items = [...items].sort((a, b) => b.age - a.age);
+  else {
+    // FIX 5: VIP/highlighted profiles always sort to the top within any sort mode
+    items = [...items].sort((a, b) => (b.isVip ? 1 : 0) - (a.isVip ? 1 : 0));
+  }
 
   const total = items.length;
   const start = (page - 1) * pageSize;
@@ -90,7 +106,10 @@ export function recommendedProfiles(user?: { gender?: string } | null): Profile[
   const userGender = user?.gender?.toLowerCase() || "female";
   const targetGender = userGender === "female" ? "male" : "female";
 
-  const candidates = mockProfiles.filter((p) => p.gender.toLowerCase() === targetGender);
+  // FIX 1: Only approved profiles appear in recommendations
+  const candidates = mockProfiles.filter(
+    (p) => p.gender.toLowerCase() === targetGender && (!p.profileStatus || p.profileStatus === "approved"),
+  );
 
   const scored = candidates.map((p) => {
     let score = 55; // Base baseline

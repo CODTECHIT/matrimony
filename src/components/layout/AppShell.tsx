@@ -28,6 +28,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/useAuth";
 import { messagesService, profilesService } from "@/services";
 import { CompleteProfileDialog } from "@/components/profile/CompleteProfileDialog";
+import { NotificationDropdown } from "@/components/notifications/NotificationDropdown";
 import { cn } from "@/lib/utils";
 
 const bottomNav = [
@@ -57,6 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
   const isProfileDetails = pathname.startsWith("/app/profiles/");
+  const isChatConversation = Boolean(pathname.replace(/\/$/, "").match(/^\/app\/messages\/[^/]+$/));
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const interestsReceivedQuery = useQuery({
@@ -98,6 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className={cn(
           "sticky top-0 z-40 border-b border-amber-500/20 bg-background/95 backdrop-blur-md w-full max-w-full shadow-xs",
           isProfileDetails && "hidden lg:block",
+          isChatConversation && "hidden md:block",
         )}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3.5 py-2.5 sm:px-6">
@@ -256,17 +259,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <span>Invite & Earn</span>
                   </button>
 
-                  {user?.role === "admin" ? (
-                    <Link
-                      to="/admin/matrimony"
-                      onClick={() => setDrawerOpen(false)}
-                      className="flex items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
-                    >
-                      <Crown className="size-5 text-amber-500" />
-                      <span>Admin Portal</span>
-                    </Link>
-                  ) : null}
-
                   <div className="pt-2 border-t border-border/80">
                     <button
                       type="button"
@@ -346,21 +338,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Search className="size-4.5 sm:size-5" />
               </Link>
             </Button>
-            {/* Bell with real-time notification badge */}
-            <Button
-              asChild
-              variant="ghost"
-              size="icon"
-              aria-label="Notifications"
-              className="relative rounded-xl size-9 sm:size-10 cursor-pointer"
-            >
-              <Link to="/app/interests/received">
-                <Bell className="size-4.5 sm:size-5" />
-                {pendingInterestsCount > 0 && (
-                  <span className="absolute top-2 right-2 size-2 rounded-full bg-[#D92662] ring-2 ring-background animate-pulse" />
-                )}
-              </Link>
-            </Button>
+            {/* Live Real-Time Notifications Dropdown */}
+            <NotificationDropdown />
             <Link to="/app/my-profile" aria-label="My profile" className="ml-0.5 shrink-0">
               <Avatar className="size-8 sm:size-9 border border-amber-400/50 shadow-xs hover:border-amber-400 transition-colors">
                 {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt="" /> : null}
@@ -377,7 +356,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div
         className={cn(
           "mx-auto flex w-full max-w-7xl min-w-0 gap-8 px-3.5 pt-4 sm:px-6 sm:pt-6 lg:pb-10 overflow-x-hidden",
-          isProfileDetails ? "pb-6" : "pb-28",
+          isProfileDetails
+            ? "pb-6"
+            : isChatConversation
+              ? "p-0 pb-0 sm:p-0 sm:pb-0 max-w-none lg:max-w-7xl lg:px-6 lg:pt-4 lg:pb-4"
+              : "pb-28",
         )}
       >
         <aside className="hidden w-60 shrink-0 lg:block">
@@ -420,11 +403,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         </aside>
 
-        <main className="min-w-0 flex-1 w-full max-w-full overflow-x-hidden">{children}</main>
+        <main
+          className={cn(
+            "min-w-0 flex-1 w-full max-w-full overflow-x-hidden",
+            isChatConversation ? "min-h-0 h-full" : "min-h-[calc(100vh-160px)]",
+          )}
+        >
+          {children}
+        </main>
       </div>
 
       {/* Fixed Bottom Tab Navigation matching Requirement 2: Background pink and gold icons footer */}
-      {!isProfileDetails ? (
+      {!isProfileDetails && !isChatConversation ? (
         <nav
           className="fixed inset-x-0 bottom-0 z-40 border-t border-[#F5D061]/30 bg-gradient-to-r from-[#D92662] via-[#C8175B] to-[#AD1457] lg:hidden shadow-lg shadow-rose-950/25 backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)] w-full max-w-full overflow-x-hidden"
           aria-label="Bottom Navigation"

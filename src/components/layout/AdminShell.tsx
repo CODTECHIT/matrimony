@@ -11,7 +11,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
-import { useAuth } from "@/hooks/useAuth";
+import { useAdminAuth } from "@/hooks/useAuth";
 
 const nav = [
   { to: "/admin/matrimony", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -23,7 +23,7 @@ const nav = [
 ] as const;
 
 export function AdminShell({ children }: { children: ReactNode }) {
-  const { signOut } = useAuth();
+  const { signOut } = useAdminAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {

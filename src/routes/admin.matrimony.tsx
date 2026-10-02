@@ -1,15 +1,35 @@
 import { useEffect } from "react";
-import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useNavigate,
+  useRouterState,
+  redirect,
+} from "@tanstack/react-router";
 import { AdminShell } from "@/components/layout/AdminShell";
 import { LoadingState } from "@/components/common/states";
-import { useAuth } from "@/hooks/useAuth";
+import { useAdminAuth } from "@/hooks/useAuth";
+import { tokenStore } from "@/lib/api-client";
 
 export const Route = createFileRoute("/admin/matrimony")({
+  beforeLoad: ({ location }) => {
+    if (typeof window !== "undefined") {
+      const isLogin = location.pathname.startsWith("/admin/matrimony/login");
+      if (!isLogin) {
+        const token = tokenStore.getAdminToken();
+        if (!token) {
+          throw redirect({
+            to: "/admin/matrimony/login",
+          });
+        }
+      }
+    }
+  },
   component: AdminMatrimonyLayout,
 });
 
 function AdminMatrimonyLayout() {
-  const { status, user } = useAuth();
+  const { status, user } = useAdminAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isLoginPage = pathname.startsWith("/admin/matrimony/login");

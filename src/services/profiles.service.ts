@@ -24,8 +24,19 @@ export const profilesService = {
 
   async byId(id: string): Promise<Profile> {
     if (env.useMockApi) {
+      const { getDailyViewUsage, trackProfileView } = await import("@/lib/limits");
+      const { mockSubscription, mockPlans } = await import("@/mocks/data");
+      const plan =
+        mockPlans.find(
+          (p) => p.id === mockSubscription.planId || p.tier === mockSubscription.tier,
+        ) || mockPlans[0]!;
+      const usage = getDailyViewUsage(plan.limits?.profileViews);
+      if (usage.exceeded) {
+        throw new Error(`DAILY_LIMIT_EXCEEDED:${usage.limit}:${mockSubscription.tier}`);
+      }
       const profile = findProfile(id);
       if (!profile) throw new Error("Profile not found");
+      trackProfileView();
       return delay(profile);
     }
     return api.get(`/profiles/${id}`);
@@ -113,7 +124,20 @@ export const profilesService = {
 
   async sendInterest(id: string): Promise<{ sent: boolean }> {
     if (env.useMockApi) {
+      const { getMonthlyInterestUsage, trackInterestSent } = await import("@/lib/limits");
+      const { mockSubscription, mockPlans } = await import("@/mocks/data");
+      const plan =
+        mockPlans.find(
+          (p) => p.id === mockSubscription.planId || p.tier === mockSubscription.tier,
+        ) || mockPlans[0]!;
+      const usage = getMonthlyInterestUsage(plan.limits?.interests);
+      if (usage.exceeded) {
+        throw new Error(
+          `You have reached your monthly limit of ${usage.limit} express interests on the ${mockSubscription.tier} plan. Please upgrade to send more.`,
+        );
+      }
       mockState.sendInterest(id);
+      trackInterestSent();
       return delay({ sent: true }, 200);
     }
     return api.post(`/profiles/${id}/interest`);
@@ -132,5 +156,15 @@ export const profilesService = {
   async respondToInterest(id: string, action: "accept" | "decline") {
     if (env.useMockApi) return delay({ ok: true }, 200);
     return api.post<{ ok: boolean }>(`/interests/${id}/${action}`);
+  },
+
+  async deleteInterest(id: string): Promise<{ ok: boolean }> {
+    if (env.useMockApi) return delay({ ok: true }, 150);
+    return api.delete<{ ok: boolean }>(`/interests/${id}`);
+  },
+
+  async unfriend(targetUserId: string): Promise<{ ok: boolean }> {
+    if (env.useMockApi) return delay({ ok: true }, 150);
+    return api.post<{ ok: boolean }>("/interests/unfriend", { targetUserId });
   },
 };

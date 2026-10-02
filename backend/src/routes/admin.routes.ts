@@ -88,6 +88,50 @@ adminRouter.post("/login", async (req, res) => {
 // All subsequent routes require administrative authorization
 adminRouter.use(requireAdmin);
 
+// Admin session validation
+adminRouter.get("/me", async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status 
+       FROM users WHERE id = $1`,
+      [req.user!.id],
+    );
+    const user = rows[0];
+    if (!user) {
+      return res.json({
+        id: req.user!.id,
+        fullName: "YFJ Admin",
+        email: process.env.ADMIN_LOGIN_ID || "admin@yfjmatrimony.com",
+        mobile: "+919999900000",
+        gender: "male",
+        role: "admin",
+        avatarUrl: null,
+        profileCompletion: 100,
+        plan: "platinum",
+        profileStatus: "approved",
+      });
+    }
+    return res.json({
+      id: user.id,
+      fullName: user.full_name,
+      email: user.email,
+      mobile: user.mobile,
+      gender: user.gender,
+      role: user.role,
+      avatarUrl: user.avatar_url,
+      profileCompletion: user.profile_completion || 100,
+      plan: user.plan || "platinum",
+      profileStatus: user.profile_status,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+adminRouter.post("/logout", async (_req, res) => {
+  return res.json({ ok: true });
+});
+
 // 1. Admin Stats
 adminRouter.get("/stats", async (_req, res) => {
   try {
@@ -199,6 +243,53 @@ adminRouter.patch("/users/:id/status", async (req, res) => {
   try {
     const { status } = req.body;
     await db.query("UPDATE users SET profile_status = $1 WHERE id = $2", [status, req.params.id]);
+    if (status === "approved") {
+      await db.query("UPDATE profiles SET verified = TRUE WHERE id = $1", [req.params.id]);
+    } else if (status === "pending" || status === "blocked") {
+      await db.query("UPDATE profiles SET verified = FALSE WHERE id = $1", [req.params.id]);
+    }
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+// 4b. Update user plan
+adminRouter.patch("/users/:id/plan", async (req, res) => {
+  try {
+    const { plan } = req.body;
+    const planTier = (plan || "free").toLowerCase();
+
+    // 1. Update user plan tier in users table
+    await db.query("UPDATE users SET plan = $1 WHERE id = $2", [planTier, req.params.id]);
+
+    // 2. Lookup plan details
+    const planRes = await db.query("SELECT * FROM plans WHERE tier = $1 LIMIT 1", [planTier]);
+    const planRow = planRes.rows[0];
+    const planId = planRow?.id || `plan-${planTier}`;
+    const durationMonths = planRow?.duration_months || 3;
+    const permissions = {
+      canMessage: planTier !== "free",
+      canViewContacts: planTier === "gold" || planTier === "platinum",
+      canUseAdvancedFilters: planTier !== "free",
+      profileHighlight: planTier === "platinum",
+    };
+
+    // 3. Mark existing active subscriptions as expired
+    await db.query(
+      "UPDATE subscriptions SET status = 'expired' WHERE user_id = $1 AND status = 'active'",
+      [req.params.id],
+    );
+
+    // 4. Create active subscription if not free
+    if (planTier !== "free") {
+      await db.query(
+        `INSERT INTO subscriptions (user_id, plan_id, tier, status, started_at, expires_at, auto_renew, permissions)
+         VALUES ($1, $2, $3, 'active', NOW(), NOW() + ($4 || ' months')::INTERVAL, false, $5)`,
+        [req.params.id, planId, planTier, durationMonths, JSON.stringify(permissions)],
+      );
+    }
+
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
@@ -419,6 +510,61 @@ adminRouter.get("/reports", async (_req, res) => {
 adminRouter.post("/reports/:id/resolve", async (req, res) => {
   try {
     await db.query("UPDATE reports SET status = 'resolved' WHERE id = $1", [req.params.id]);
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+adminRouter.post("/reports/:id/block-and-resolve", async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `UPDATE reports SET status = 'resolved' WHERE id = $1 RETURNING reported_user_id`,
+      [req.params.id],
+    );
+    if (rows[0]?.reported_user_id) {
+      await db.query(`UPDATE users SET profile_status = 'blocked' WHERE id = $1`, [
+        rows[0].reported_user_id,
+      ]);
+    }
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+adminRouter.post("/payments/:id/refund", async (req, res) => {
+  try {
+    await db.query(`UPDATE payments SET status = 'refunded' WHERE id = $1`, [req.params.id]);
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+adminRouter.post("/subscriptions/cancel", async (req, res) => {
+  try {
+    const { user } = req.body;
+    await db.query(
+      `UPDATE subscriptions s SET status = 'expired', auto_renew = false
+       FROM users u WHERE s.user_id = u.id AND (u.full_name ILIKE $1 OR u.email ILIKE $1)`,
+      [user],
+    );
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+adminRouter.post("/subscriptions/extend", async (req, res) => {
+  try {
+    const { user, days = 30 } = req.body;
+    await db.query(
+      `UPDATE subscriptions s 
+       SET status = 'active', expires_at = GREATEST(COALESCE(s.expires_at, NOW()), NOW()) + ($2 || ' days')::INTERVAL
+       FROM users u WHERE s.user_id = u.id AND (u.full_name ILIKE $1 OR u.email ILIKE $1)`,
+      [user, days],
+    );
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });

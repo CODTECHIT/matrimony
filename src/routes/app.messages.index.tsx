@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { BadgeCheck, Check, MessageSquare, Sparkles, X } from "lucide-react";
+import { BadgeCheck, Check, MessageSquare, Sparkles, Trash2, UserMinus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { messagesService, profilesService, subscriptionsService } from "@/services";
@@ -10,6 +10,7 @@ import { ListSkeleton, ErrorState } from "@/components/common/states";
 import type { Interest } from "@/types";
 import lockedChatImg from "@/assets/locked-chat.png";
 import { getProfileAvatar, handleImageError } from "@/lib/images";
+import { realtimeClient } from "@/lib/realtime";
 
 export const Route = createFileRoute("/app/messages/")({
   head: () => ({
@@ -64,6 +65,21 @@ function MessagesPage() {
     refetchInterval: 5000,
   });
 
+  // Keep conversations list updated immediately in real-time
+  useEffect(() => {
+    const unsubMsg = realtimeClient.on("chat:message", () => {
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    });
+    const unsubAccepted = realtimeClient.on("interest:accepted", () => {
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      void queryClient.invalidateQueries({ queryKey: ["interests"] });
+    });
+    return () => {
+      unsubMsg();
+      unsubAccepted();
+    };
+  }, [queryClient]);
+
   const canMessage = subscriptionQuery.data?.permissions.canMessage ?? false;
   const requests = requestsQuery.data ?? [];
   const pendingRequests = requests.filter((r) => r.status === "pending");
@@ -97,6 +113,61 @@ function MessagesPage() {
       });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Could not open conversation");
+    }
+  };
+
+  const handleUnfriend = async (interest: Interest) => {
+    const partnerName = interest.profile.fullName;
+    if (
+      !window.confirm(
+        `Are you sure you want to unfriend and remove connection with ${partnerName}? This will disconnect you and delete your conversation history.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await profilesService.deleteInterest(interest.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["interests"] }),
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+        queryClient.invalidateQueries({ queryKey: ["profiles"] }),
+      ]);
+      toast.success(`Unfriended ${partnerName}. Connection removed.`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to unfriend connection");
+    }
+  };
+
+  const handleDeleteRequest = async (interest: Interest) => {
+    try {
+      await profilesService.deleteInterest(interest.id);
+      await queryClient.invalidateQueries({ queryKey: ["interests"] });
+      toast.info("Request removed.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete request");
+    }
+  };
+
+  const handleDeleteConversation = async (
+    conversationId: string,
+    participantName: string,
+    e: React.MouseEvent,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (
+      !window.confirm(
+        `Delete conversation with ${participantName}? All messages will be permanently deleted.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await messagesService.deleteConversation(conversationId);
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      toast.success(`Deleted conversation with ${participantName}.`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete conversation");
     }
   };
 
@@ -173,7 +244,7 @@ function MessagesPage() {
                 >
                   <Link
                     to="/app/profiles/$profileId"
-                    params={{ profileId: item.profile.id }}
+                    params={{ profileId: item.profile.displayId || item.profile.id }}
                     className="flex items-center gap-3.5 min-w-0"
                   >
                     <img
@@ -186,6 +257,9 @@ function MessagesPage() {
                       <div className="flex items-center gap-1.5">
                         <span className="truncate font-display text-base font-bold text-foreground">
                           {item.profile.fullName}, {item.profile.age}
+                        </span>
+                        <span className="inline-flex items-center rounded-md bg-amber-500/10 border border-amber-400/30 px-1.5 py-0.5 text-[0.65rem] font-bold text-amber-700 dark:text-amber-300 shrink-0">
+                          {item.profile.displayId || item.profile.id.slice(0, 8)}
                         </span>
                         {item.profile.verified && (
                           <BadgeCheck className="size-4 shrink-0 text-primary" />
@@ -229,16 +303,38 @@ function MessagesPage() {
                         <Button
                           size="sm"
                           onClick={() => handleStartChat(item)}
-                          className="rounded-full text-xs h-8 px-3.5 bg-[#D92662] hover:bg-[#C2185B] text-white"
+                          className="rounded-full text-xs h-8 px-3.5 bg-[#D92662] hover:bg-[#C2185B] text-white cursor-pointer"
                         >
                           <MessageSquare className="size-3.5 mr-1" />
                           Message
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleUnfriend(item)}
+                          className="rounded-full text-xs h-8 px-2.5 border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30 cursor-pointer"
+                          title="Unfriend and disconnect"
+                        >
+                          <UserMinus className="size-3.5 mr-1" />
+                          Unfriend
+                        </Button>
                       </div>
                     ) : (
-                      <Badge variant="secondary" className="text-xs">
-                        Declined
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs">
+                          Declined
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteRequest(item)}
+                          className="rounded-full text-xs h-8 px-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                          title="Delete request"
+                        >
+                          <Trash2 className="size-3.5 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </li>
@@ -264,11 +360,14 @@ function MessagesPage() {
               )}
               <ul className="divide-y divide-border overflow-hidden rounded-3xl border border-border bg-card shadow-card">
                 {conversationsQuery.data.map((conversation) => (
-                  <li key={conversation.id}>
+                  <li
+                    key={conversation.id}
+                    className="group relative flex items-center justify-between transition-colors hover:bg-muted/60"
+                  >
                     <Link
                       to="/app/messages/$conversationId"
                       params={{ conversationId: conversation.id }}
-                      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-4 transition-colors hover:bg-muted/60"
+                      className="grid flex-1 min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-4"
                     >
                       <img
                         src={getProfileAvatar(conversation.participant.photos?.[0])}
@@ -277,7 +376,7 @@ function MessagesPage() {
                         width={56}
                         height={56}
                         onError={(e) => handleImageError(e)}
-                        className="size-14 rounded-full object-cover border border-border"
+                        className="size-14 rounded-full object-cover border border-border shrink-0"
                       />
                       <div className="min-w-0">
                         <h3 className="truncate text-base font-semibold text-foreground">
@@ -287,7 +386,7 @@ function MessagesPage() {
                           {conversation.lastMessage || "No messages yet"}
                         </p>
                       </div>
-                      <div className="text-right shrink-0">
+                      <div className="text-right shrink-0 pr-1">
                         <span className="text-xs text-muted-foreground block">
                           {formatTime(conversation.lastMessageAt)}
                         </span>
@@ -298,6 +397,23 @@ function MessagesPage() {
                         )}
                       </div>
                     </Link>
+                    <div className="pr-4 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) =>
+                          handleDeleteConversation(
+                            conversation.id,
+                            conversation.participant.fullName,
+                            e,
+                          )
+                        }
+                        className="size-8 rounded-full flex items-center justify-center text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                        title="Delete conversation"
+                        aria-label="Delete conversation"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>

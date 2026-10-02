@@ -20,6 +20,7 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminMatrimonyRouteImport } from './routes/admin.matrimony'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppBrowseRouteImport } from './routes/app.browse'
@@ -99,6 +100,11 @@ const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminMatrimonyRoute = AdminMatrimonyRouteImport.update({
   id: '/matrimony',
@@ -235,6 +241,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRoute
   '/terms': typeof TermsRoute
+  '/admin/login': typeof AdminLoginRoute
   '/admin/matrimony': typeof AdminMatrimonyRouteWithChildren
   '/app/browse': typeof AppBrowseRoute
   '/app/messages': typeof AppMessagesRouteWithChildren
@@ -271,6 +278,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRoute
   '/terms': typeof TermsRoute
+  '/admin/login': typeof AdminLoginRoute
   '/app/browse': typeof AppBrowseRoute
   '/app/search': typeof AppSearchRoute
   '/app/settings': typeof AppSettingsRoute
@@ -306,6 +314,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRoute
   '/terms': typeof TermsRoute
+  '/admin/login': typeof AdminLoginRoute
   '/admin/matrimony': typeof AdminMatrimonyRouteWithChildren
   '/app/browse': typeof AppBrowseRoute
   '/app/messages': typeof AppMessagesRouteWithChildren
@@ -345,6 +354,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/register'
     | '/terms'
+    | '/admin/login'
     | '/admin/matrimony'
     | '/app/browse'
     | '/app/messages'
@@ -381,6 +391,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/register'
     | '/terms'
+    | '/admin/login'
     | '/app/browse'
     | '/app/search'
     | '/app/settings'
@@ -415,6 +426,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/register'
     | '/terms'
+    | '/admin/login'
     | '/admin/matrimony'
     | '/app/browse'
     | '/app/messages'
@@ -533,6 +545,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/login': {
+      id: '/admin/login'
+      path: '/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/matrimony': {
       id: '/admin/matrimony'
@@ -730,10 +749,12 @@ const AdminMatrimonyRouteWithChildren = AdminMatrimonyRoute._addFileChildren(
 )
 
 interface AdminRouteChildren {
+  AdminLoginRoute: typeof AdminLoginRoute
   AdminMatrimonyRoute: typeof AdminMatrimonyRouteWithChildren
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminLoginRoute: AdminLoginRoute,
   AdminMatrimonyRoute: AdminMatrimonyRouteWithChildren,
 }
 

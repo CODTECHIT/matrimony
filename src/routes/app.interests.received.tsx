@@ -41,6 +41,33 @@ function InterestsReceivedPage() {
     );
   };
 
+  const handleUnfriend = async (interest: Interest) => {
+    const name = interest.profile.fullName;
+    if (!window.confirm(`Are you sure you want to unfriend ${name}? This will remove your connection.`)) {
+      return;
+    }
+    try {
+      await profilesService.deleteInterest(interest.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["interests"] }),
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+      ]);
+      toast.success(`Unfriended ${name}.`);
+    } catch {
+      toast.error("Failed to unfriend.");
+    }
+  };
+
+  const handleDelete = async (interest: Interest) => {
+    try {
+      await profilesService.deleteInterest(interest.id);
+      await queryClient.invalidateQueries({ queryKey: ["interests"] });
+      toast.info("Request deleted.");
+    } catch {
+      toast.error("Failed to delete request.");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -64,7 +91,13 @@ function InterestsReceivedPage() {
           }
         />
       ) : (
-        <InterestList interests={query.data ?? []} mode="received" onRespond={respond} />
+        <InterestList
+          interests={query.data ?? []}
+          mode="received"
+          onRespond={respond}
+          onUnfriend={handleUnfriend}
+          onDelete={handleDelete}
+        />
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import cors from "cors";
 import path from "path";
 import dotenv from "dotenv";
@@ -8,11 +9,17 @@ import { interestsRouter } from "./routes/interests.routes.js";
 import { messagesRouter } from "./routes/messages.routes.js";
 import { subscriptionsRouter } from "./routes/subscriptions.routes.js";
 import { adminRouter } from "./routes/admin.routes.js";
+import { notificationsRouter } from "./routes/notifications.routes.js";
+import { setupRealtimeServer } from "./services/realtime.service.js";
 
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
+
+// Initialize WebSocket real-time server
+setupRealtimeServer(server);
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -66,6 +73,8 @@ app.use("/api/auth", authRouter);
 app.use("/api/profiles", profilesRouter);
 app.use("/api/interests", interestsRouter);
 app.use("/api/conversations", messagesRouter);
+app.use("/api/messages", messagesRouter);
+app.use("/api/notifications", notificationsRouter);
 app.use("/api", subscriptionsRouter);
 app.use("/api/admin", adminRouter);
 
@@ -75,8 +84,8 @@ app.use((_req, res) => {
 });
 
 // Start server
-app.listen(PORT, async () => {
-  console.log(`[YFJ Backend] Server running on port ${PORT}`);
+server.listen(PORT, async () => {
+  console.log(`[YFJ Backend] Server and WebSocket running on port ${PORT}`);
   console.log(`[YFJ Backend] Health check: http://localhost:${PORT}/health`);
   console.log(`[YFJ Backend] Database connected to AWS RDS`);
 

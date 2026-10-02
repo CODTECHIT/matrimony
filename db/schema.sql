@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS users (
     profile_completion INTEGER NOT NULL DEFAULT 20 CHECK (profile_completion BETWEEN 0 AND 100),
     plan VARCHAR(20) NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'silver', 'gold', 'platinum')),
     profile_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (profile_status IN ('pending', 'approved', 'blocked')),
+    profile_number INTEGER UNIQUE,
+    display_id VARCHAR(20) UNIQUE,
     preferences JSONB DEFAULT '{"interests": true, "messages": true, "matches": false, "photo": true, "contact": true, "online": false}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -128,6 +130,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     expires_at TIMESTAMPTZ,
     auto_renew BOOLEAN NOT NULL DEFAULT FALSE,
     permissions JSONB NOT NULL DEFAULT '{}',
+    expiry_warning_sent_at TIMESTAMPTZ,
+    expired_email_sent_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -158,6 +162,7 @@ CREATE TABLE IF NOT EXISTS reports (
 CREATE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_display_id ON users(display_id);
 
 CREATE INDEX IF NOT EXISTS idx_profiles_gender ON users(gender);
 CREATE INDEX IF NOT EXISTS idx_profiles_age ON profiles(age);
@@ -198,6 +203,62 @@ DROP TRIGGER IF EXISTS set_timestamp_interests ON interests;
 CREATE TRIGGER set_timestamp_interests
 BEFORE UPDATE ON interests
 FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+
+-- =============================================================================
+-- SEQUENTIAL PROFILE ID ENGINE & TRIGGER
+-- =============================================================================
+CREATE SEQUENCE IF NOT EXISTS profile_id_seq START WITH 1;
+
+CREATE OR REPLACE FUNCTION format_profile_id(seq_num INTEGER)
+RETURNS VARCHAR(20) AS $$
+DECLARE
+    k INTEGER;
+    q INTEGER;
+    r INTEGER;
+    temp INTEGER;
+    rem INTEGER;
+    letters VARCHAR(10) := '';
+BEGIN
+    IF seq_num IS NULL OR seq_num < 1 THEN
+        RETURN NULL;
+    END IF;
+    IF seq_num <= 100 THEN
+        RETURN 'P' || seq_num::TEXT;
+    END IF;
+
+    k := seq_num - 101;
+    q := k / 100;
+    r := (k % 100) + 1;
+
+    temp := q;
+    LOOP
+        rem := temp % 26;
+        letters := CHR(65 + rem) || letters;
+        temp := (temp / 26) - 1;
+        EXIT WHEN temp < 0;
+    END LOOP;
+
+    RETURN 'P' || letters || r::TEXT;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION trigger_set_profile_display_id()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF COALESCE(NEW.role, 'user') = 'user' AND (NEW.display_id IS NULL OR NEW.display_id = '') THEN
+        IF NEW.profile_number IS NULL THEN
+            NEW.profile_number := nextval('profile_id_seq');
+        END IF;
+        NEW.display_id := format_profile_id(NEW.profile_number);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_profile_display_id_trigger ON users;
+CREATE TRIGGER set_profile_display_id_trigger
+BEFORE INSERT ON users
+FOR EACH ROW EXECUTE PROCEDURE trigger_set_profile_display_id();
 
 -- =============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES

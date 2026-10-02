@@ -75,15 +75,15 @@ function ContactPage() {
           <ul className="mt-6 space-y-4 text-sm">
             <li className="flex items-start gap-3">
               <Phone className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>+91 90000 00000 (Mon–Sat, 10am–7pm IST)</span>
+              <span>+91 90145 67801 (Mon–Sat, 10am–7pm IST)</span>
             </li>
             <li className="flex items-start gap-3">
               <Mail className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>care@yfjmatrimony.com</span>
+              <span>Y.F.J.matrimony@gmail.com</span>
             </li>
             <li className="flex items-start gap-3">
               <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>3rd Floor, Kalyani Nagar, Pune 411006, India</span>
+              <span>Bhimavaram</span>
             </li>
           </ul>
         </div>

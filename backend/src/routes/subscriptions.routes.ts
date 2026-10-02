@@ -2,30 +2,117 @@ import { Router } from "express";
 import crypto from "crypto";
 import { db } from "../config/db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
+import { quotaService } from "../services/quota.service.js";
+import { notificationsService } from "../services/notifications.service.js";
+import { sendPlanExpiringEmail, sendPlanExpiredEmail } from "../config/mailer.js";
 
 export const subscriptionsRouter = Router();
 
 /**
- * Maintenance helper: Checks and expires subscriptions that have passed their `expires_at` date.
- * Demotes users without active paid subscriptions back to the 'free' plan using an atomic query.
+ * Maintenance helper: Checks and notifies subscriptions that are expiring soon (<= 3 days)
+ * and expires subscriptions that have passed their `expires_at` date.
+ * Demotes users without active paid subscriptions back to the 'free' plan.
  */
 export async function expireOutdatedSubscriptions() {
   try {
+    // Ensure tracking columns exist (idempotent guard)
     await db.query(`
-      WITH expired_subs AS (
-        UPDATE subscriptions
-        SET status = 'expired'
-        WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= NOW()
-        RETURNING user_id
-      )
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expiry_warning_sent_at TIMESTAMPTZ;
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expired_email_sent_at TIMESTAMPTZ;
+    `).catch(() => {});
+
+    // 1. Check for plans expiring soon (within 3 days)
+    const expiringSoonRes = await db.query(`
+      SELECT s.id, s.user_id, s.plan_id, s.tier, s.expires_at, u.email, u.full_name
+      FROM subscriptions s
+      JOIN users u ON s.user_id = u.id
+      WHERE s.status = 'active'
+        AND s.expires_at IS NOT NULL
+        AND s.expires_at > NOW()
+        AND s.expires_at <= NOW() + INTERVAL '3 days'
+        AND s.expiry_warning_sent_at IS NULL
+    `);
+
+    for (const sub of expiringSoonRes.rows) {
+      try {
+        const daysLeft = Math.max(
+          1,
+          Math.ceil((new Date(sub.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+        );
+
+        if (sub.email) {
+          await sendPlanExpiringEmail({
+            to: sub.email,
+            userName: sub.full_name || "Member",
+            tier: sub.tier,
+            expiresAt: sub.expires_at,
+            daysLeft,
+          });
+        }
+
+        await notificationsService.create({
+          userId: sub.user_id,
+          type: "system",
+          title: "Plan Expiring Soon ⏳",
+          body: `Your ${sub.tier.toUpperCase()} membership expires in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}. Renew now to maintain uninterrupted access.`,
+          data: { planId: sub.plan_id, tier: sub.tier, expiresAt: sub.expires_at },
+        });
+
+        await db.query(
+          "UPDATE subscriptions SET expiry_warning_sent_at = NOW() WHERE id = $1",
+          [sub.id]
+        );
+      } catch (subErr: any) {
+        console.warn(`[Subscription Expiry Warning Error] Failed for subscription ${sub.id}:`, subErr.message);
+      }
+    }
+
+    // 2. Check for plans that have expired
+    const expiredRes = await db.query(`
+      SELECT s.id, s.user_id, s.plan_id, s.tier, s.expires_at, u.email, u.full_name, s.expired_email_sent_at
+      FROM subscriptions s
+      JOIN users u ON s.user_id = u.id
+      WHERE s.status = 'active'
+        AND s.expires_at IS NOT NULL
+        AND s.expires_at <= NOW()
+    `);
+
+    for (const sub of expiredRes.rows) {
+      try {
+        if (sub.email && !sub.expired_email_sent_at) {
+          await sendPlanExpiredEmail({
+            to: sub.email,
+            userName: sub.full_name || "Member",
+            tier: sub.tier,
+          });
+        }
+
+        await notificationsService.create({
+          userId: sub.user_id,
+          type: "system",
+          title: "Membership Expired",
+          body: `Your ${sub.tier.toUpperCase()} membership has expired. Your account has returned to the Free plan. Upgrade anytime to restore premium features.`,
+          data: { planId: sub.plan_id, tier: sub.tier },
+        });
+
+        await db.query(
+          "UPDATE subscriptions SET status = 'expired', expired_email_sent_at = COALESCE(expired_email_sent_at, NOW()) WHERE id = $1",
+          [sub.id]
+        );
+      } catch (subErr: any) {
+        console.warn(`[Subscription Expired Error] Failed for subscription ${sub.id}:`, subErr.message);
+      }
+    }
+
+    // Demote users who no longer have an active paid subscription to 'free'
+    await db.query(`
       UPDATE users u
       SET plan = 'free'
-      FROM expired_subs es
-      WHERE u.id = es.user_id
-        AND u.role != 'admin'
+      WHERE u.role != 'admin'
+        AND u.plan != 'free'
         AND NOT EXISTS (
           SELECT 1 FROM subscriptions s
-          WHERE s.user_id = es.user_id
+          WHERE s.user_id = u.id
             AND s.status = 'active'
             AND (s.expires_at IS NULL OR s.expires_at > NOW())
         );
@@ -113,6 +200,16 @@ subscriptionsRouter.get("/subscriptions/me", requireAuth, async (req, res) => {
     });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
+  }
+});
+
+// 2b. Get current user's plan quota usage summary
+subscriptionsRouter.get("/subscriptions/usage", requireAuth, async (req, res) => {
+  try {
+    const summary = await quotaService.getUsageSummary(req.user!.id, req.user!.plan);
+    return res.json(summary);
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message || "Failed to load quota usage" });
   }
 });
 

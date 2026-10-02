@@ -63,9 +63,9 @@ function SettingsPage() {
     interests: true,
     messages: true,
     matches: false,
-    photo: true,
+    photo: false,
     contact: true,
-    online: false,
+    online: true,
   });
 
   useEffect(() => {

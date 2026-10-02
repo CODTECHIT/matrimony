@@ -53,15 +53,15 @@ export function SiteFooter() {
           <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
               <Phone className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>+91 90000 00000</span>
+              <span>+91 90145 67801</span>
             </li>
             <li className="flex items-start gap-2">
               <Mail className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>care@yfjmatrimony.com</span>
+              <span>Y.F.J.matrimony@gmail.com</span>
             </li>
             <li className="flex items-start gap-2">
               <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>Pune, Maharashtra, India</span>
+              <span>Bhimavaram</span>
             </li>
           </ul>
         </div>

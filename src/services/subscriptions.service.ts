@@ -2,7 +2,7 @@ import { api } from "@/lib/api-client";
 import { env } from "@/lib/env";
 import type { Plan, Subscription } from "@/types";
 import { delay } from "@/mocks/adapter";
-import { mockPayments, mockPlans, mockSubscription } from "@/mocks/data";
+import { mockPayments, mockPlans, mockSubscription, mockUser } from "@/mocks/data";
 
 export interface PaymentOrder {
   orderId: string;
@@ -19,7 +19,38 @@ export const subscriptionsService = {
   },
 
   async current(): Promise<Subscription> {
-    if (env.useMockApi) return delay(mockSubscription);
+    if (env.useMockApi) {
+      // FIX 7: Check subscription expiry in real-time
+      const isExpired =
+        mockSubscription.expiresAt && mockSubscription.status === "active"
+          ? new Date(mockSubscription.expiresAt).getTime() < Date.now()
+          : false;
+
+      const plan =
+        mockPlans.find(
+          (p) => p.id === mockSubscription.planId || p.tier === mockSubscription.tier,
+        ) || mockPlans[0]!;
+
+      if (isExpired) {
+        mockSubscription.status = "expired";
+      }
+
+      const active = mockSubscription.status === "active";
+      const sub: Subscription = {
+        ...mockSubscription,
+        limits: plan.limits,
+        permissions: active
+          ? (plan.permissions || mockSubscription.permissions)
+          : {
+              canMessage: false,
+              canViewContacts: false,
+              canUseAdvancedFilters: false,
+              profileHighlight: false,
+            },
+      };
+
+      return delay(sub);
+    }
     return api.get("/subscriptions/me");
   },
 
@@ -43,36 +74,45 @@ export const subscriptionsService = {
       const plan = mockPlans.find((p) => p.id === payload["planId"]) || mockPlans[2]!;
       mockPayments.unshift({
         id: `pay-${Date.now()}`,
-        user: "Ananya Sharma",
+        user: mockUser.fullName,
         plan: plan.name,
         amountInr: plan.priceInr,
         status: "success",
         createdAt: new Date().toISOString().split("T")[0]!,
         gatewayRef: payload["razorpay_payment_id"] || `pay_rzp_${Date.now()}`,
       });
-      const updatedSub: Subscription = {
-        planId: plan.id,
-        tier: plan.tier,
-        status: "active",
-        startedAt: new Date().toISOString().split("T")[0]!,
-        expiresAt: new Date(Date.now() + (plan.durationMonths || 3) * 30 * 86400000)
-          .toISOString()
-          .split("T")[0]!,
-        autoRenew: true,
-        permissions: plan.permissions || {
-          canMessage: true,
-          canViewContacts: true,
-          canUseAdvancedFilters: true,
-          profileHighlight: plan.tier === "platinum",
-        },
+
+      // Mutate mockSubscription so all subsequent calls reflect the upgraded membership
+      mockSubscription.planId = plan.id;
+      mockSubscription.tier = plan.tier;
+      mockSubscription.status = "active";
+      mockSubscription.startedAt = new Date().toISOString().split("T")[0]!;
+      mockSubscription.expiresAt = new Date(
+        Date.now() + (plan.durationMonths || 3) * 30 * 86400000,
+      )
+        .toISOString()
+        .split("T")[0]!;
+      mockSubscription.autoRenew = true;
+      mockSubscription.limits = plan.limits;
+      mockSubscription.permissions = plan.permissions || {
+        canMessage: plan.tier !== "free",
+        canViewContacts: plan.tier === "gold" || plan.tier === "platinum",
+        canUseAdvancedFilters: plan.tier !== "free",
+        profileHighlight: plan.tier === "platinum",
       };
-      return delay(updatedSub, 150);
+
+      mockUser.plan = plan.tier;
+
+      return delay({ ...mockSubscription }, 150);
     }
     return api.post("/payments/verify", payload);
   },
 
   async cancelAutoRenew(): Promise<Subscription> {
-    if (env.useMockApi) return delay({ ...mockSubscription, autoRenew: false });
+    if (env.useMockApi) {
+      mockSubscription.autoRenew = false;
+      return delay({ ...mockSubscription, autoRenew: false });
+    }
     return api.post("/subscriptions/cancel");
   },
 };

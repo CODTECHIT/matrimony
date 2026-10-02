@@ -33,6 +33,7 @@ export const mockUser: AuthUser = {
   avatarUrl: photo1,
   profileCompletion: 75,
   plan: "gold",
+  profileStatus: "approved",
 };
 
 export const mockAdmin: AuthUser = {
@@ -51,7 +52,11 @@ const base = {
   verified: true,
   shortlisted: false,
   interestSent: false,
+  isConnected: false,
   canViewContact: false,
+  /** All seeded mock profiles are pre-approved by admin */
+  profileStatus: "approved" as const,
+  isVip: false,
   family: {
     fatherOccupation: "Retired banker",
     motherOccupation: "Homemaker",
@@ -192,20 +197,31 @@ const seeds: Array<Partial<Profile> & Pick<Profile, "id" | "fullName" | "age" | 
   },
 ];
 
-export const mockProfiles: Profile[] = seeds.map((seed, index) => ({
-  ...base,
-  photos: [photos[index % photos.length]],
-  about: "",
-  height: "5'6\"",
-  caste: "—",
-  education: "—",
-  occupation: "—",
-  incomeRange: "—",
-  city: "—",
-  state: "—",
-  lastActive: index % 3 === 0 ? "Online now" : `Active ${index + 1} days ago`,
-  ...seed,
-})) as Profile[];
+export const mockProfiles: Profile[] = seeds.map((seed, index) => {
+  const status = (["approved", "pending", "approved", "blocked"] as const)[index % 4]!;
+  return {
+    ...base,
+    photos: [photos[index % photos.length]],
+    about: "",
+    height: "5'6\"",
+    caste: "—",
+    education: "—",
+    occupation: "—",
+    incomeRange: "—",
+    city: "—",
+    state: "—",
+    lastActive: index % 3 === 0 ? "Online now" : `Active ${index + 1} days ago`,
+    /** Every profile has contact info; visibility is permission-gated at render time */
+    contact: {
+      mobile: `+91 9${(800000000 + index * 111111).toString()}`,
+      whatsapp: index % 2 === 0 ? `+91 9${(800000000 + index * 111111).toString()}` : undefined,
+    },
+    /** Profiles at index 3 and 7 (Aditya & Vikram) are on Platinum — marked VIP */
+    isVip: index === 3 || index === 7,
+    profileStatus: status,
+    ...seed,
+  };
+}) as Profile[];
 
 export const mockPlans: Plan[] = [
   {
@@ -284,6 +300,12 @@ export const mockSubscription: Subscription = {
   startedAt: "2026-05-14",
   expiresAt: "2026-11-14",
   autoRenew: true,
+  limits: {
+    profileViews: "100 / day",
+    interests: "50 / month",
+    messaging: "Matched members",
+    contacts: "25 / month",
+  },
   permissions: {
     canMessage: true,
     canViewContacts: true,

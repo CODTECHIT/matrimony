@@ -1,9 +1,12 @@
-import { Link } from "@tanstack/react-router";
-import { Briefcase, Check, Heart, MapPin, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Briefcase, Check, Crown, Heart, Loader2, MapPin, MessageCircle, Sparkles } from "lucide-react";
 import type { Profile } from "@/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getProfileAvatar, handleImageError } from "@/lib/images";
+import { messagesService } from "@/services";
+import { toast } from "sonner";
 
 interface ProfileCardProps {
   profile: Profile;
@@ -18,10 +21,43 @@ export function ProfileCard({
   onInterest,
   layout = "grid",
 }: ProfileCardProps) {
+  const navigate = useNavigate();
+  const [isOpeningChat, setIsOpeningChat] = useState(false);
+
+  const handleMessage = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isOpeningChat) return;
+
+    if (profile.conversationId) {
+      void navigate({
+        to: "/app/messages/$conversationId",
+        params: { conversationId: profile.conversationId },
+      });
+      return;
+    }
+
+    try {
+      setIsOpeningChat(true);
+      const res = await messagesService.start(
+        profile.id,
+        profile.fullName,
+        profile.photos,
+      );
+      void navigate({
+        to: "/app/messages/$conversationId",
+        params: { conversationId: res.id },
+      });
+    } catch {
+      toast.error("Could not open chat with this member");
+    } finally {
+      setIsOpeningChat(false);
+    }
+  };
   if (layout === "row") {
     return (
       <article className="flex gap-3 rounded-2xl border border-amber-500/25 bg-card p-3 shadow-card hover:border-amber-400/60 hover:shadow-raised transition-all duration-300 w-full min-w-0 max-w-full overflow-hidden">
-        <Link to="/app/profiles/$profileId" params={{ profileId: profile.id }} className="shrink-0">
+        <Link to="/app/profiles/$profileId" params={{ profileId: profile.displayId || profile.id }} className="shrink-0">
           <img
             src={getProfileAvatar(profile.photos?.[0], profile.gender)}
             alt={profile.fullName}
@@ -37,18 +73,30 @@ export function ProfileCard({
             <div className="flex items-center justify-between gap-1.5">
               <Link
                 to="/app/profiles/$profileId"
-                params={{ profileId: profile.id }}
-                className="flex items-center gap-1.5"
+                params={{ profileId: profile.displayId || profile.id }}
+                className="flex items-center gap-1.5 min-w-0"
               >
                 <h3 className="truncate font-sans text-base font-bold text-foreground">
                   {profile.fullName}, {profile.age}
                 </h3>
+                <span className="inline-flex items-center rounded-md bg-amber-500/10 border border-amber-400/30 px-1.5 py-0.5 text-[0.65rem] font-bold text-amber-700 dark:text-amber-300 shrink-0">
+                  {profile.displayId || profile.id.slice(0, 8)}
+                </span>
                 {profile.verified ? (
                   <span
                     className="flex size-4 shrink-0 items-center justify-center rounded-full bg-gold text-gold-foreground shadow-xs"
                     title="Verified Profile"
                   >
                     <Check className="size-2.5 stroke-[3]" />
+                  </span>
+                ) : null}
+                {/* FIX 5: VIP badge for profileHighlight / Platinum members */}
+                {profile.isVip ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 rounded-full bg-gradient-to-r from-[#C59B27] to-amber-500 px-1.5 py-0.5 text-[0.6rem] font-bold text-white shadow-xs shrink-0"
+                    title="VIP Premium Member"
+                  >
+                    <Crown className="size-2.5" /> VIP
                   </span>
                 ) : null}
               </Link>
@@ -89,7 +137,7 @@ export function ProfileCard({
       <div className="relative overflow-hidden w-full">
         <Link
           to="/app/profiles/$profileId"
-          params={{ profileId: profile.id }}
+          params={{ profileId: profile.displayId || profile.id }}
           className="block w-full"
         >
           <img
@@ -118,11 +166,22 @@ export function ProfileCard({
             />
           </button>
         ) : null}
-        {profile.lastActive === "Online now" ? (
-          <span className="absolute left-2 top-2 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[0.6rem] font-bold text-white shadow-xs backdrop-blur-xs">
-            Online
+        <div className="absolute left-2 top-2 flex flex-wrap items-center gap-1.5 z-10 pointer-events-none">
+          <span className="rounded-md bg-black/60 backdrop-blur-md border border-white/20 px-2 py-0.5 text-[0.62rem] sm:text-[0.68rem] font-bold text-white shadow-xs">
+            {profile.displayId || profile.id.slice(0, 8)}
           </span>
-        ) : null}
+          {profile.lastActive === "Online now" ? (
+            <span className="rounded-full bg-emerald-500/90 px-2 py-0.5 text-[0.6rem] font-bold text-white shadow-xs backdrop-blur-xs">
+              Online
+            </span>
+          ) : null}
+          {/* FIX 5: VIP badge for profileHighlight / Platinum members */}
+          {profile.isVip ? (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-gradient-to-r from-[#C59B27] to-amber-500 px-2 py-0.5 text-[0.6rem] font-bold text-white shadow-xs">
+              <Crown className="size-2.5" /> VIP
+            </span>
+          ) : null}
+        </div>
         {profile.matchScore ? (
           <span className="absolute bottom-2 left-2 rounded-full bg-black/60 backdrop-blur-md border border-white/20 px-2 py-0.5 text-[0.62rem] sm:text-[0.68rem] font-semibold text-white shadow-xs flex items-center gap-1">
             <Sparkles className="size-2.5 text-amber-400 fill-amber-400" />
@@ -137,7 +196,7 @@ export function ProfileCard({
           <div className="flex items-center justify-between gap-1 min-w-0 w-full">
             <Link
               to="/app/profiles/$profileId"
-              params={{ profileId: profile.id }}
+              params={{ profileId: profile.displayId || profile.id }}
               className="flex items-center gap-1 min-w-0 truncate"
             >
               <h3 className="truncate font-sans text-xs sm:text-base font-bold text-foreground group-hover:text-primary transition-colors">
@@ -194,13 +253,43 @@ export function ProfileCard({
           >
             <Link
               to="/app/profiles/$profileId"
-              params={{ profileId: profile.id }}
+              params={{ profileId: profile.displayId || profile.id }}
               className="truncate"
             >
               View
             </Link>
           </Button>
-          {onInterest ? (
+          {profile.isConnected ? (
+            profile.conversationId ? (
+              <Button
+                asChild
+                size="sm"
+                className="h-7.5 sm:h-8 flex-[1.4] min-w-0 rounded-xl text-[0.7rem] sm:text-xs font-bold bg-[#D92662] hover:bg-[#C2185B] text-white transition-all shadow-xs cursor-pointer gap-1 px-1 sm:px-2"
+              >
+                <Link
+                  to="/app/messages/$conversationId"
+                  params={{ conversationId: profile.conversationId }}
+                >
+                  <MessageCircle className="size-3 shrink-0" />
+                  <span className="truncate min-w-0">Message</span>
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={handleMessage}
+                disabled={isOpeningChat}
+                className="h-7.5 sm:h-8 flex-[1.4] min-w-0 rounded-xl text-[0.7rem] sm:text-xs font-bold bg-[#D92662] hover:bg-[#C2185B] text-white transition-all shadow-xs cursor-pointer gap-1 px-1 sm:px-2"
+              >
+                {isOpeningChat ? (
+                  <Loader2 className="size-3 shrink-0 animate-spin" />
+                ) : (
+                  <MessageCircle className="size-3 shrink-0" />
+                )}
+                <span className="truncate min-w-0">{isOpeningChat ? "Opening..." : "Message"}</span>
+              </Button>
+            )
+          ) : onInterest ? (
             <Button
               size="sm"
               onClick={() => onInterest(profile)}

@@ -9,6 +9,11 @@ import {
 } from "../config/aws.js";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { requireAuth, optionalAuth } from "../middleware/auth.middleware.js";
+import { isUuid, isDisplayId, resolveUserId } from "../utils/profileId.js";
+import { realtimeService } from "../services/realtime.service.js";
+import { notificationsService } from "../services/notifications.service.js";
+import { quotaService } from "../services/quota.service.js";
+import { sendInterestReceivedEmail } from "../config/mailer.js";
 
 export const profilesRouter = Router();
 
@@ -55,18 +60,52 @@ function mapProfileRow(
   isShortlisted = false,
   isInterestSent = false,
   canViewContact = false,
+  viewer?: { id: string; role?: string; plan?: string },
+  isConnected = false,
+  conversationId?: string,
 ) {
   const completion = typeof row.profile_completion === "number" && row.profile_completion > 0
     ? row.profile_completion
     : computeProfileCompletion(row);
 
+  const isSelf = viewer && viewer.id === row.id;
+  const isAdmin = viewer && viewer.role === "admin";
+  const viewerPlan = (viewer?.plan || "free").toLowerCase();
+  const isPremiumViewer = viewerPlan === "silver" || viewerPlan === "gold" || viewerPlan === "platinum";
+
+  // Privacy rule 1: Photo visibility (Show photos to premium members only)
+  const rawPhotos = row.photos && row.photos.length > 0 ? row.photos : row.avatar_url ? [row.avatar_url] : [];
+  let photos = rawPhotos;
+  let photosLocked = false;
+  if (row.preferences?.photo === true && !isSelf && !isAdmin && !isPremiumViewer) {
+    photos = [];
+    photosLocked = true;
+  }
+
+  // Privacy rule 2: Contact privacy (Hide number until accepted mutual interest)
+  let contact = undefined;
+  if (canViewContact && (row.mobile || row.whatsapp)) {
+    if (row.preferences?.contact === true && !isSelf && !isAdmin && !row.hasMutualInterest) {
+      contact = undefined;
+    } else {
+      contact = { mobile: row.mobile, whatsapp: row.whatsapp || row.mobile };
+    }
+  }
+
+  // Privacy rule 3: Online status
+  let lastActive = row.last_active;
+  if (row.preferences?.online === false && !isSelf && !isAdmin) {
+    lastActive = undefined;
+  }
+
   return {
     id: row.id,
+    displayId: row.display_id || undefined,
     fullName: row.full_name || "",
     age: row.age || 25,
     gender: row.gender || "male",
-    photos:
-      row.photos && row.photos.length > 0 ? row.photos : row.avatar_url ? [row.avatar_url] : [],
+    photos,
+    photosLocked,
     videos: row.videos || [],
     verified: Boolean(row.verified),
     about: row.about || "",
@@ -95,25 +134,28 @@ function mapProfileRow(
       familyType: row.family_type,
       familyValues: row.family_values,
     },
-    lastActive: row.last_active,
+    lastActive,
     shortlisted: isShortlisted,
     interestSent: isInterestSent,
-    canViewContact,
+    isConnected,
+    conversationId,
+    canViewContact: Boolean(contact),
+    contact,
     profileCompletion: completion,
-    contact:
-      canViewContact && (row.mobile || row.whatsapp)
-        ? { mobile: row.mobile, whatsapp: row.whatsapp || row.mobile }
-        : undefined,
   };
 }
 
-async function attachShortlistAndInterest(userId: string | undefined, rows: any[]) {
+async function attachShortlistAndInterest(
+  userId: string | undefined,
+  rows: any[],
+  viewer?: { id: string; role?: string; plan?: string },
+) {
   if (!userId || rows.length === 0) {
-    return rows.map((r) => mapProfileRow(r, false, false, false));
+    return rows.map((r) => mapProfileRow(r, false, false, false, viewer, false, undefined));
   }
 
   const profileIds = rows.map((r) => r.id);
-  const [shortRes, intRes] = await Promise.all([
+  const [shortRes, intRes, mutualRes, convRes] = await Promise.all([
     db.query(
       `SELECT target_profile_id FROM shortlists WHERE user_id = $1 AND target_profile_id = ANY($2)`,
       [userId, profileIds],
@@ -122,14 +164,38 @@ async function attachShortlistAndInterest(userId: string | undefined, rows: any[
       `SELECT receiver_id FROM interests WHERE sender_id = $1 AND receiver_id = ANY($2)`,
       [userId, profileIds],
     ),
+    db.query(
+      `SELECT CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END as other_id 
+       FROM interests 
+       WHERE status = 'accepted' AND ((sender_id = $1 AND receiver_id = ANY($2)) OR (receiver_id = $1 AND sender_id = ANY($2)))`,
+      [userId, profileIds],
+    ),
+    db.query(
+      `SELECT id, CASE WHEN user1_id = $1 THEN user2_id ELSE user1_id END as other_id 
+       FROM conversations 
+       WHERE (user1_id = $1 AND user2_id = ANY($2)) OR (user2_id = $1 AND user1_id = ANY($2))`,
+      [userId, profileIds],
+    ),
   ]);
 
   const shortlistedIds = new Set(shortRes.rows.map((x: any) => x.target_profile_id));
   const interestSentIds = new Set(intRes.rows.map((x: any) => x.receiver_id));
+  const mutualIds = new Set(mutualRes.rows.map((x: any) => x.other_id));
+  const convMap = new Map<string, string>(convRes.rows.map((x: any) => [x.other_id, x.id]));
 
-  return rows.map((r) =>
-    mapProfileRow(r, shortlistedIds.has(r.id), interestSentIds.has(r.id), false),
-  );
+  return rows.map((r) => {
+    const isConn = mutualIds.has(r.id) || convMap.has(r.id);
+    const convId = convMap.get(r.id);
+    return mapProfileRow(
+      r,
+      shortlistedIds.has(r.id),
+      interestSentIds.has(r.id),
+      false,
+      viewer,
+      isConn,
+      convId,
+    );
+  });
 }
 
 // 1. List profiles with dynamic filters (excludes own profile, prioritizes matches)
@@ -153,7 +219,7 @@ profilesRouter.get("/", optionalAuth, async (req, res) => {
     const size = Math.max(1, parseInt(pageSize, 10));
     const offset = (p - 1) * size;
 
-    const conditions: string[] = ["u.profile_status != 'blocked'"];
+    const conditions: string[] = ["u.profile_status = 'approved'", "u.role != 'admin'"];
     const params: any[] = [];
     let paramIndex = 1;
 
@@ -201,16 +267,22 @@ profilesRouter.get("/", optionalAuth, async (req, res) => {
       params.push(`%${city}%`);
     }
     if (query) {
-      conditions.push(`(u.full_name ILIKE $${paramIndex} OR pr.city ILIKE $${paramIndex})`);
-      params.push(`%${query}%`);
+      const cleanQ = query.trim();
+      conditions.push(`(u.full_name ILIKE $${paramIndex} OR pr.city ILIKE $${paramIndex} OR u.display_id ILIKE $${paramIndex})`);
+      params.push(`%${cleanQ}%`);
       paramIndex++;
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     let orderBy = "ORDER BY pr.last_active DESC";
-    if (sort === "age_asc") orderBy = "ORDER BY pr.age ASC";
-    if (sort === "age_desc") orderBy = "ORDER BY pr.age DESC";
+    if (query && isDisplayId(query.trim())) {
+      orderBy = `ORDER BY CASE WHEN u.display_id ILIKE '${query.trim()}' THEN 0 ELSE 1 END, pr.last_active DESC`;
+    } else if (sort === "age_asc") {
+      orderBy = "ORDER BY pr.age ASC";
+    } else if (sort === "age_desc") {
+      orderBy = "ORDER BY pr.age DESC";
+    }
 
     // Count total query
     const countSql = `SELECT COUNT(*) FROM profiles pr JOIN users u ON pr.id = u.id ${whereClause}`;
@@ -219,7 +291,7 @@ profilesRouter.get("/", optionalAuth, async (req, res) => {
 
     // Fetch paginated records
     const listSql = `
-      SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan
+      SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.display_id, u.preferences
       FROM profiles pr
       JOIN users u ON pr.id = u.id
       ${whereClause}
@@ -230,7 +302,7 @@ profilesRouter.get("/", optionalAuth, async (req, res) => {
 
     const { rows } = await db.query(listSql, params);
 
-    const items = await attachShortlistAndInterest(req.user?.id, rows);
+    const items = await attachShortlistAndInterest(req.user?.id, rows, req.user);
     return res.json({
       items,
       page: p,
@@ -245,7 +317,7 @@ profilesRouter.get("/", optionalAuth, async (req, res) => {
 // 2. Recommended profiles (excludes own profile, prioritizes matching gender)
 profilesRouter.get("/recommended", optionalAuth, async (req, res) => {
   try {
-    const conditions: string[] = ["u.profile_status != 'blocked'"];
+    const conditions: string[] = ["u.profile_status = 'approved'", "u.role != 'admin'"];
     const params: any[] = [];
     let paramIndex = 1;
 
@@ -262,7 +334,7 @@ profilesRouter.get("/recommended", optionalAuth, async (req, res) => {
 
     const whereClause = `WHERE ${conditions.join(" AND ")}`;
     const { rows } = await db.query(
-      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan
+      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.display_id, u.preferences
        FROM profiles pr
        JOIN users u ON pr.id = u.id
        ${whereClause}
@@ -270,7 +342,7 @@ profilesRouter.get("/recommended", optionalAuth, async (req, res) => {
        LIMIT 6`,
       params,
     );
-    const items = await attachShortlistAndInterest(req.user?.id, rows);
+    const items = await attachShortlistAndInterest(req.user?.id, rows, req.user);
     return res.json(items);
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
@@ -281,7 +353,7 @@ profilesRouter.get("/recommended", optionalAuth, async (req, res) => {
 profilesRouter.get("/shortlisted", requireAuth, async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan
+      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.display_id, u.preferences
        FROM shortlists s
        JOIN profiles pr ON s.target_profile_id = pr.id
        JOIN users u ON pr.id = u.id
@@ -290,18 +362,8 @@ profilesRouter.get("/shortlisted", requireAuth, async (req, res) => {
       [req.user!.id],
     );
 
-    const profileIds = rows.map((r) => r.id);
-    let interestSentIds = new Set<string>();
-    if (profileIds.length > 0) {
-      const intRes = await db.query(
-        `SELECT receiver_id FROM interests WHERE sender_id = $1 AND receiver_id = ANY($2)`,
-        [req.user!.id, profileIds],
-      );
-      interestSentIds = new Set(intRes.rows.map((x: any) => x.receiver_id));
-    }
-    return res.json(
-      rows.map((r) => mapProfileRow(r, true, interestSentIds.has(r.id), false)),
-    );
+    const items = await attachShortlistAndInterest(req.user!.id, rows, req.user);
+    return res.json(items);
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
@@ -317,7 +379,7 @@ profilesRouter.get("/me", requireAuth, async (req, res) => {
     );
 
     const { rows } = await db.query(
-      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.profile_completion
+      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.profile_completion, u.display_id, u.preferences
        FROM profiles pr
        JOIN users u ON pr.id = u.id
        WHERE pr.id = $1`,
@@ -335,7 +397,7 @@ profilesRouter.get("/me", requireAuth, async (req, res) => {
       rows[0].profile_completion = completion;
     }
 
-    return res.json(mapProfileRow(rows[0], false, false, true));
+    return res.json(mapProfileRow(rows[0], false, false, true, req.user));
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
@@ -365,6 +427,7 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
       "siblings",
       "familyType",
       "familyValues",
+      "whatsapp",
       "photos",
       "videos",
     ];
@@ -393,6 +456,7 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
       siblings: "siblings",
       familyType: "family_type",
       familyValues: "family_values",
+      whatsapp: "whatsapp",
       photos: "photos",
       videos: "videos",
     };
@@ -445,6 +509,15 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
       );
     }
 
+    // Sync users.avatar_url with the first photo in the photos array
+    if (updates.photos !== undefined && Array.isArray(updates.photos)) {
+      const primaryAvatar = updates.photos.length > 0 ? updates.photos[0] : null;
+      await db.query(`UPDATE users SET avatar_url = $1 WHERE id = $2`, [
+        primaryAvatar,
+        req.user!.id,
+      ]);
+    }
+
     // Update full_name on users table if provided
     if (updates.fullName && typeof updates.fullName === "string") {
       await db.query(`UPDATE users SET full_name = $1 WHERE id = $2`, [
@@ -471,7 +544,7 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
 
     // Fetch updated profile
     const { rows } = await db.query(
-      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.profile_completion
+      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.profile_completion, u.display_id, u.preferences
        FROM profiles pr
        JOIN users u ON pr.id = u.id
        WHERE pr.id = $1`,
@@ -487,8 +560,11 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
     ]);
     r.profile_completion = finalCompletion;
 
-    return res.json(mapProfileRow(r, false, false, true));
+    return res.json(mapProfileRow(r, false, false, true, req.user));
   } catch (err: any) {
+    if (err.code === "23505" && err.constraint?.includes("mobile")) {
+      return res.status(400).json({ message: "This mobile number is already in use by another account" });
+    }
     return res.status(500).json({ message: err.message });
   }
 });
@@ -646,15 +722,23 @@ profilesRouter.post("/me/videos", requireAuth, async (req, res) => {
   }
 });
 
-// 8. Toggle shortlist
+// 8. Toggle shortlist (supports UUID and display ID)
 profilesRouter.post("/:id/shortlist", requireAuth, async (req, res) => {
   try {
-    const targetId = req.params.id;
+    const targetIdentifier = Array.isArray(req.params.id) ? req.params.id[0] : (req.params.id || "");
     const userId = req.user!.id;
+
+    const targetUserId = await resolveUserId(targetIdentifier);
+    if (!targetUserId) {
+      return res.status(404).json({ message: "Target profile not found" });
+    }
+    if (targetUserId === userId) {
+      return res.status(400).json({ message: "Cannot shortlist your own profile" });
+    }
 
     const existing = await db.query(
       "SELECT id FROM shortlists WHERE user_id = $1 AND target_profile_id = $2",
-      [userId, targetId],
+      [userId, targetUserId],
     );
 
     if (existing.rows.length > 0) {
@@ -663,7 +747,7 @@ profilesRouter.post("/:id/shortlist", requireAuth, async (req, res) => {
     } else {
       await db.query("INSERT INTO shortlists (user_id, target_profile_id) VALUES ($1, $2)", [
         userId,
-        targetId,
+        targetUserId,
       ]);
       return res.json({ shortlisted: true });
     }
@@ -672,11 +756,29 @@ profilesRouter.post("/:id/shortlist", requireAuth, async (req, res) => {
   }
 });
 
-// 9. Send interest
+// 9. Send interest (supports UUID and display ID)
 profilesRouter.post("/:id/interest", requireAuth, async (req, res) => {
   try {
-    const receiverId = req.params.id;
+    const receiverIdentifier = Array.isArray(req.params.id) ? req.params.id[0] : (req.params.id || "");
     const senderId = req.user!.id;
+    const userPlan = req.user!.plan || "free";
+
+    const receiverId = await resolveUserId(receiverIdentifier);
+    if (!receiverId) {
+      return res.status(404).json({ message: "Target profile not found" });
+    }
+    if (receiverId === senderId) {
+      return res.status(400).json({ message: "Cannot send interest to yourself" });
+    }
+
+    // Check monthly interest quota
+    const quotaCheck = await quotaService.checkInterestQuota(senderId, userPlan);
+    if (!quotaCheck.allowed) {
+      return res.status(403).json({
+        code: quotaCheck.code,
+        message: quotaCheck.message,
+      });
+    }
 
     await db.query(
       `INSERT INTO interests (sender_id, receiver_id, status)
@@ -685,24 +787,92 @@ profilesRouter.post("/:id/interest", requireAuth, async (req, res) => {
       [senderId, receiverId],
     );
 
+    // Emit real-time notification to receiver & send email
+    void (async () => {
+      try {
+        const [senderRes, receiverRes] = await Promise.all([
+          db.query(
+            `SELECT u.full_name, u.display_id, u.avatar_url, pr.age, pr.occupation, pr.city
+             FROM users u
+             LEFT JOIN profiles pr ON u.id = pr.id
+             WHERE u.id = $1`,
+            [senderId]
+          ),
+          db.query(
+            "SELECT full_name, email, preferences FROM users WHERE id = $1",
+            [receiverId]
+          ),
+        ]);
+
+        const sender = senderRes.rows[0];
+        const senderName = sender?.full_name || "A member";
+        const receiver = receiverRes.rows[0];
+
+        realtimeService.broadcastInterestReceived(receiverId, {
+          interestId: `int-${Date.now()}`,
+          sender: {
+            id: senderId,
+            displayId: sender?.display_id,
+            name: senderName,
+            avatar: sender?.avatar_url,
+          },
+        });
+
+        await notificationsService.create({
+          userId: receiverId,
+          type: "interest_received",
+          title: "New Interest Request 💖",
+          body: `${senderName} (${sender?.display_id || ""}) sent you an interest request.`,
+          data: { senderId, displayId: sender?.display_id },
+        });
+
+        // Send email to receiver if email exists and user allows interest emails
+        if (receiver && receiver.email) {
+          const prefs = receiver.preferences || {};
+          if (prefs.interests !== false) {
+            await sendInterestReceivedEmail({
+              to: receiver.email,
+              receiverName: receiver.full_name || "Member",
+              senderName,
+              senderDisplayId: sender?.display_id || undefined,
+              senderAge: sender?.age ? Number(sender.age) : undefined,
+              senderOccupation: sender?.occupation || undefined,
+              senderCity: sender?.city || undefined,
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[Interest Notification Warning]", err.message);
+      }
+    })();
+
     return res.json({ sent: true });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
 });
 
-// 10. Get single profile by ID with authorized contact unlocking
+// 10. Get single profile by ID with authorized contact unlocking (supports UUID and display ID like 'P1', 'PA1')
 profilesRouter.get("/:id", optionalAuth, async (req, res) => {
   try {
+    const rawId = (Array.isArray(req.params.id) ? req.params.id[0] : (req.params.id || "")).trim();
+    if (!rawId) return res.status(400).json({ message: "Profile identifier is required" });
+
+    const isTargetUuid = isUuid(rawId);
+
     const { rows } = await db.query(
-      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan
+      `SELECT pr.*, u.full_name, u.gender, u.mobile, u.avatar_url, u.plan, u.display_id, u.preferences
        FROM profiles pr
        JOIN users u ON pr.id = u.id
-       WHERE pr.id = $1`,
-      [req.params.id],
+       WHERE ${isTargetUuid ? "pr.id = $1" : "u.display_id ILIKE $1"}
+       LIMIT 1`,
+      [rawId],
     );
 
     if (rows.length === 0) return res.status(404).json({ message: "Profile not found" });
+
+    const targetUser = rows[0];
+    const targetId = targetUser.id; // Canonical UUID
 
     let canViewContact = false;
     let isShortlisted = false;
@@ -710,7 +880,18 @@ profilesRouter.get("/:id", optionalAuth, async (req, res) => {
 
     if (req.user) {
       const viewerId = req.user.id;
-      const targetId = req.params.id;
+      const viewerPlan = req.user.plan || "free";
+
+      // Enforce daily profile view quota if viewing another member
+      if (viewerId !== targetId && req.user.role !== "admin") {
+        const viewQuota = await quotaService.checkAndRecordProfileView(viewerId, targetId, viewerPlan);
+        if (!viewQuota.allowed) {
+          return res.status(403).json({
+            code: viewQuota.code,
+            message: viewQuota.message,
+          });
+        }
+      }
 
       // 1. Viewing own profile or admin viewer
       if (viewerId === targetId || req.user.role === "admin") {
@@ -730,10 +911,18 @@ profilesRouter.get("/:id", optionalAuth, async (req, res) => {
             canViewContact = true;
           }
         }
+
+        // Enforce monthly contact unlock quota
+        if (canViewContact) {
+          const contactQuota = await quotaService.checkAndRecordContactUnlock(viewerId, targetId, viewerPlan);
+          if (!contactQuota.allowed) {
+            canViewContact = false;
+          }
+        }
       }
 
-      // Check shortlist and interest status
-      const [shortRes, intRes] = await Promise.all([
+      // Check shortlist, interest, mutual accepted interest status, and active conversation
+      const [shortRes, intRes, mutualRes, convRes] = await Promise.all([
         db.query(
           "SELECT id FROM shortlists WHERE user_id = $1 AND target_profile_id = $2 LIMIT 1",
           [viewerId, targetId],
@@ -742,13 +931,51 @@ profilesRouter.get("/:id", optionalAuth, async (req, res) => {
           viewerId,
           targetId,
         ]),
+        db.query(
+          `SELECT 1 FROM interests
+           WHERE status = 'accepted' AND ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1))
+           LIMIT 1`,
+          [viewerId, targetId],
+        ),
+        db.query(
+          `SELECT id FROM conversations
+           WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1)
+           LIMIT 1`,
+          [viewerId, targetId],
+        ),
       ]);
 
       isShortlisted = shortRes.rows.length > 0;
       isInterestSent = intRes.rows.length > 0;
+      targetUser.hasMutualInterest = mutualRes.rows.length > 0;
+      const isConnected = mutualRes.rows.length > 0 || convRes.rows.length > 0;
+      const conversationId = convRes.rows[0]?.id;
+
+      const viewer = req.user ? { id: req.user.id, role: req.user.role, plan: req.user.plan } : undefined;
+      return res.json(
+        mapProfileRow(
+          targetUser,
+          isShortlisted,
+          isInterestSent,
+          canViewContact,
+          viewer,
+          isConnected,
+          conversationId,
+        ),
+      );
     }
 
-    return res.json(mapProfileRow(rows[0], isShortlisted, isInterestSent, canViewContact));
+    return res.json(
+      mapProfileRow(
+        targetUser,
+        false,
+        false,
+        false,
+        undefined,
+        false,
+        undefined,
+      ),
+    );
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }

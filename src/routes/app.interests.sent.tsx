@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Send } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { InterestList } from "@/components/profiles/InterestList";
 import { EmptyState, ErrorState, ListSkeleton } from "@/components/common/states";
 import { Button } from "@/components/ui/button";
 import { profilesService } from "@/services";
+import type { Interest } from "@/types";
 
 export const Route = createFileRoute("/app/interests/sent")({
   head: () => ({
@@ -23,10 +25,38 @@ export const Route = createFileRoute("/app/interests/sent")({
 });
 
 function InterestsSentPage() {
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["interests", "sent"],
     queryFn: () => profilesService.interestsSent(),
   });
+
+  const handleUnfriend = async (interest: Interest) => {
+    const name = interest.profile.fullName;
+    if (!window.confirm(`Are you sure you want to unfriend ${name}? This will remove your connection.`)) {
+      return;
+    }
+    try {
+      await profilesService.deleteInterest(interest.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["interests"] }),
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+      ]);
+      toast.success(`Unfriended ${name}.`);
+    } catch {
+      toast.error("Failed to unfriend.");
+    }
+  };
+
+  const handleDelete = async (interest: Interest) => {
+    try {
+      await profilesService.deleteInterest(interest.id);
+      await queryClient.invalidateQueries({ queryKey: ["interests"] });
+      toast.info("Interest request cancelled.");
+    } catch {
+      toast.error("Failed to cancel request.");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -51,7 +81,12 @@ function InterestsSentPage() {
           }
         />
       ) : (
-        <InterestList interests={query.data ?? []} mode="sent" />
+        <InterestList
+          interests={query.data ?? []}
+          mode="sent"
+          onUnfriend={handleUnfriend}
+          onDelete={handleDelete}
+        />
       )}
     </div>
   );

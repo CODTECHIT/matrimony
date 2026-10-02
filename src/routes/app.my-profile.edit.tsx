@@ -61,6 +61,7 @@ function EditProfilePage() {
           : "";
 
       const mobileNumber = profile.contact?.mobile || user?.mobile || "";
+      const whatsappNumber = profile.contact?.whatsapp || (profile as any).whatsapp || "";
 
       setValues((prev) => ({
         ...prev,
@@ -69,6 +70,7 @@ function EditProfilePage() {
           (profile.gender || user?.gender || "").toLowerCase() === "female" ? "Female" : "Male",
         dateOfBirth: defaultDob,
         mobile: mobileNumber,
+        whatsapp: whatsappNumber,
         height: profile.height || "",
         maritalStatus: formatMaritalStatus(profile.maritalStatus),
         religion: profile.religion || "",
@@ -81,6 +83,7 @@ function EditProfilePage() {
         city: profile.city || "",
         state: profile.state || "",
         country: profile.country || "India",
+        residenceStatus: (profile as any).residenceStatus || "",
         about: profile.about || "",
         fatherOccupation: profile.family?.fatherOccupation || "",
         motherOccupation: profile.family?.motherOccupation || "",
@@ -157,6 +160,7 @@ function EditProfilePage() {
       await refresh();
       await queryClient.invalidateQueries({ queryKey: ["my-profile"] });
       await queryClient.invalidateQueries({ queryKey: ["profile"] });
+      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
       toast.success("Profile updated");
       void navigate({ to: "/app/my-profile" });
     } catch (err: unknown) {
