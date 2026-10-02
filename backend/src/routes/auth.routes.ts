@@ -28,7 +28,7 @@ authRouter.post("/login", async (req, res) => {
     }
 
     const { rows } = await db.query(
-      `SELECT id, full_name, email, mobile, password_hash, gender, role, avatar_url, profile_completion, plan, profile_status 
+      `SELECT id, full_name, email, mobile, password_hash, gender, role, avatar_url, profile_completion, plan, profile_status, display_id 
        FROM users WHERE LOWER(email) = LOWER($1) OR mobile = $1`,
       [identifier],
     );
@@ -70,6 +70,7 @@ authRouter.post("/login", async (req, res) => {
         profileCompletion: user.profile_completion,
         plan: user.plan,
         profileStatus: user.profile_status,
+        displayId: user.display_id || undefined,
       },
     });
   } catch (err: any) {
@@ -122,7 +123,7 @@ authRouter.post("/otp/verify", async (req, res) => {
     mobileOtpStore.delete(cleanMobile);
 
     const { rows } = await db.query(
-      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status 
+      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status, display_id 
        FROM users WHERE mobile = $1`,
       [cleanMobile],
     );
@@ -152,6 +153,7 @@ authRouter.post("/otp/verify", async (req, res) => {
         profileCompletion: user.profile_completion,
         plan: user.plan,
         profileStatus: user.profile_status,
+        displayId: user.display_id || undefined,
       },
     });
   } catch (err: any) {
@@ -285,7 +287,7 @@ authRouter.post("/register", async (req, res) => {
 authRouter.get("/me", requireAuth, async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status 
+      `SELECT id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status, display_id 
        FROM users WHERE id = $1`,
       [req.user!.id],
     );
@@ -310,6 +312,7 @@ authRouter.get("/me", requireAuth, async (req, res) => {
       profileCompletion: user.profile_completion,
       plan: user.plan,
       profileStatus: user.profile_status,
+      displayId: user.display_id || undefined,
     });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
