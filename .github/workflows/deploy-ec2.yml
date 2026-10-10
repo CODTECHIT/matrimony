@@ -1,0 +1,60 @@
+name: Deploy Backend to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/deploy-ec2.yml"
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+concurrency:
+  group: production_deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to AWS EC2 via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            echo ">>> [1/5] Ensuring repository exists on EC2..."
+            if [ ! -d "$HOME/matrimony" ]; then
+              echo "Cloning repository..."
+              git clone https://github.com/CODTECHIT/matrimony.git "$HOME/matrimony"
+            fi
+
+            cd "$HOME/matrimony"
+
+            echo ">>> [2/5] Fetching and syncing latest changes..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo ">>> [3/5] Installing backend dependencies and compiling..."
+            cd backend
+            npm install
+            npm run build
+
+            echo ">>> [4/5] Reloading application via PM2..."
+            if pm2 describe yfj-matrimony-api > /dev/null 2>&1; then
+              pm2 reload yfj-matrimony-api
+            else
+              pm2 start ecosystem.config.cjs
+            fi
+            pm2 save
+
+            echo ">>> [5/5] Deployment complete!"
+            pm2 status
