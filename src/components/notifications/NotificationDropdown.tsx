@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { notificationsService, type NotificationItem } from "@/services/notifications.service";
 import { realtimeClient } from "@/lib/realtime";
+import { tokenStore } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -86,6 +87,7 @@ export function NotificationDropdown() {
     queryKey: ["notifications"],
     queryFn: () => notificationsService.list(),
     refetchInterval: 15000,
+    enabled: typeof window !== "undefined" && Boolean(tokenStore.getUserToken()),
   });
 
   const markAllMutation = useMutation({

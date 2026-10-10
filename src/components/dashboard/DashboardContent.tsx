@@ -80,6 +80,7 @@ export function DashboardContent() {
   const _subscriptionQuery = useQuery({
     queryKey: ["subscription"],
     queryFn: () => subscriptionsService.current(),
+    enabled: Boolean(user),
   });
 
   const handleShortlist = async (profile: Profile) => {
