@@ -251,6 +251,9 @@ export const quotaService = {
 
     return {
       plan: userPlan,
+      dailyViewsUsed,
+      monthlyInterestsUsed: interestsSent30d,
+      contactsUnlockedUsed: contactsUnlocked30d,
       dailyProfileViews: {
         used: dailyViewsUsed,
         limit: isGold ? "Unlimited" : isSilver ? 200 : 50,

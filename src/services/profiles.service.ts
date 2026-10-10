@@ -167,4 +167,27 @@ export const profilesService = {
     if (env.useMockApi) return delay({ ok: true }, 150);
     return api.post<{ ok: boolean }>("/interests/unfriend", { targetUserId });
   },
+
+  async reportProfile(id: string, reason: string, description?: string): Promise<{ ok: boolean; message: string }> {
+    if (env.useMockApi) return delay({ ok: true, message: "Report submitted" }, 150);
+    return api.post(`/profiles/${id}/report`, { reason, description });
+  },
+
+  async submitIdVerification(payload: {
+    documentType: string;
+    documentNumber?: string;
+    documentFrontUrl: string;
+    documentBackUrl?: string;
+    selfieUrl?: string;
+  }): Promise<{ ok: boolean; message: string }> {
+    if (env.useMockApi) return delay({ ok: true, message: "ID submitted for verification" });
+    return api.post("/profiles/me/verify-id", payload);
+  },
+
+  async getVerificationStatus(): Promise<{ verification: any }> {
+    if (env.useMockApi) return delay({ verification: null });
+    return api.get("/profiles/me/verification-status");
+  },
 };
+
+

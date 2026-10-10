@@ -15,12 +15,14 @@ import {
   MessageCircle,
   ShieldCheck,
   Sparkles,
+  Tag,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/common/states";
 import { subscriptionsService } from "@/services";
 import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api-client";
 import { env } from "@/lib/env";
 import { openRazorpayCheckout } from "@/lib/razorpay";
 import type { Plan } from "@/types";
@@ -93,6 +95,15 @@ function UpgradePage() {
   const [isYearly, setIsYearly] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("plan-gold");
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountAmount: number;
+    finalAmount: number;
+    discountType: string;
+    discountValue: number;
+  } | null>(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   const plansQuery = useQuery({ queryKey: ["plans"], queryFn: () => subscriptionsService.plans() });
   const subscriptionQuery = useQuery({
@@ -100,14 +111,59 @@ function UpgradePage() {
     queryFn: () => subscriptionsService.current(),
   });
 
+  const activeCouponsQuery = useQuery<{ id: string; code: string; discount_type: string; discount_value: number; min_amount?: number }[]>({
+    queryKey: ["coupons", "active"],
+    queryFn: () => api.get("/coupons/active"),
+    staleTime: 60 * 1000,
+  });
+  const activeCoupons = activeCouponsQuery.data ?? [];
+
   const paidPlans = plansQuery.data?.filter((p) => p.tier !== "free") ?? [];
   const selectedPlan = paidPlans.find((p) => p.id === selectedPlanId) ?? paidPlans[1];
 
   const { user } = useAuth();
 
+  const handleApplyCoupon = async (e?: React.FormEvent, directCode?: string) => {
+    if (e) e.preventDefault();
+    const targetCode = (directCode || couponCode).trim();
+    if (!targetCode) {
+      toast.error("Please enter a coupon code");
+      return;
+    }
+    if (!selectedPlan) return;
+
+    setValidatingCoupon(true);
+    const basePrice = isYearly ? Math.round(selectedPlan.priceInr * 0.8) : selectedPlan.priceInr;
+    try {
+      const res = await subscriptionsService.validateCoupon(targetCode, basePrice);
+      setAppliedCoupon({
+        code: res.code,
+        discountAmount: res.discountAmount,
+        finalAmount: res.finalAmount,
+        discountType: res.discountType,
+        discountValue: res.discountValue,
+      });
+      setCouponCode(res.code);
+      toast.success(res.message);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Invalid or expired coupon");
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    toast.info("Coupon removed");
+  };
+
   const handleSelect = async (plan: Plan) => {
     if (plan.priceInr === 0) return;
     setPendingPlan(plan.id);
+    const basePrice = isYearly ? Math.round(plan.priceInr * 0.8) : plan.priceInr;
+    const finalAmount = appliedCoupon ? appliedCoupon.finalAmount : basePrice;
+
     try {
       const order = await subscriptionsService.createOrder(plan.id);
 
@@ -115,7 +171,7 @@ function UpgradePage() {
       if (env.paymentPublicKey) {
         const opened = await openRazorpayCheckout({
           key: env.paymentPublicKey,
-          amountInr: plan.priceInr,
+          amountInr: finalAmount,
           ...(order.orderId.startsWith("order_mock") ? {} : { orderId: order.orderId }),
           planName: plan.name,
           description: `${plan.name} Membership (${plan.durationMonths} months)`,
@@ -389,37 +445,116 @@ function UpgradePage() {
           })}
         </div>
 
-        {/* CTA Section matching Screen 7 button */}
-        <div className="rounded-3xl border border-border bg-card p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">
-              Selected Membership
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-2xl font-bold text-foreground">
-                {selectedPlan ? selectedPlan.name : "Choose a plan"}
-              </span>
-              {selectedPlan ? (
-                <span className="text-sm font-bold text-[#D92662]">
-                  {formatInr(
-                    isYearly ? Math.round(selectedPlan.priceInr * 0.8) : selectedPlan.priceInr,
-                  )}
-                </span>
-              ) : null}
+        {/* Coupon Code Bar & CTA Section */}
+        <div className="rounded-3xl border border-border bg-card p-6 shadow-sm space-y-4">
+          {/* Coupon Code Section */}
+          <div className="space-y-3 border-b border-border/60 pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Tag className="size-4 text-primary" />
+                <span className="text-xs font-semibold text-foreground">Have a Promotional Code?</span>
+              </div>
+
+              {appliedCoupon ? (
+                <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <Check className="size-3.5" />
+                  <span>{appliedCoupon.code} applied (-{formatInr(appliedCoupon.discountAmount)})</span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    className="ml-2 text-destructive hover:underline text-[11px] cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleApplyCoupon} className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. WELCOME50"
+                    className="rounded-xl border border-border bg-background px-3 py-1.5 font-mono text-xs uppercase text-foreground focus:border-primary focus:outline-none w-36 sm:w-40"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="outline"
+                    disabled={validatingCoupon || !couponCode.trim()}
+                    className="text-xs h-8 px-3 rounded-xl cursor-pointer"
+                  >
+                    {validatingCoupon ? "Checking..." : "Apply Code"}
+                  </Button>
+                </form>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Immediate access to messaging, contacts, and priority listings
-            </p>
+
+            {/* Clickable Active Coupon Chips */}
+            {activeCoupons.length > 0 && !appliedCoupon && (
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                <span className="text-[11px] text-muted-foreground font-medium">Available Coupons:</span>
+                {activeCoupons.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => void handleApplyCoupon(undefined, c.code)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/60 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-300 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Sparkles className="size-3 text-amber-500" />
+                    <span>{c.code}</span>
+                    <span className="rounded bg-white/70 dark:bg-black/40 px-1 py-0.2 text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">
+                      {c.discount_type === "percentage" ? `${Math.round(Number(c.discount_value))}% OFF` : `₹${Math.round(Number(c.discount_value))} OFF`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <Button
-            size="lg"
-            className="w-full sm:w-auto min-w-[220px] rounded-full bg-[#D92662] hover:bg-[#c2185b] text-white font-bold text-base py-6 shadow-md cursor-pointer"
-            disabled={!selectedPlan || pendingPlan === selectedPlan.id}
-            onClick={() => selectedPlan && void handleSelect(selectedPlan)}
-          >
-            {pendingPlan === selectedPlan?.id ? "Activating..." : "Continue"}
-          </Button>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-1">
+            <div>
+              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">
+                Selected Membership
+              </p>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display text-2xl font-bold text-foreground">
+                  {selectedPlan ? selectedPlan.name : "Choose a plan"}
+                </span>
+                {selectedPlan ? (
+                  appliedCoupon ? (
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm line-through text-muted-foreground">
+                        {formatInr(
+                          isYearly ? Math.round(selectedPlan.priceInr * 0.8) : selectedPlan.priceInr,
+                        )}
+                      </span>
+                      <span className="text-lg font-bold text-[#D92662]">
+                        {formatInr(appliedCoupon.finalAmount)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-lg font-bold text-[#D92662]">
+                      {formatInr(
+                        isYearly ? Math.round(selectedPlan.priceInr * 0.8) : selectedPlan.priceInr,
+                      )}
+                    </span>
+                  )
+                ) : null}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Immediate access to messaging, contacts, and priority listings
+              </p>
+            </div>
+
+            <Button
+              size="lg"
+              className="w-full sm:w-auto min-w-[220px] rounded-full bg-[#D92662] hover:bg-[#c2185b] text-white font-bold text-base py-6 shadow-md cursor-pointer"
+              disabled={!selectedPlan || pendingPlan === selectedPlan.id}
+              onClick={() => selectedPlan && void handleSelect(selectedPlan)}
+            >
+              {pendingPlan === selectedPlan?.id ? "Activating..." : "Continue to Payment"}
+            </Button>
+          </div>
         </div>
 
         <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground text-center pt-2">

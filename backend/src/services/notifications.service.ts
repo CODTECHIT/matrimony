@@ -64,10 +64,18 @@ export const notificationsService = {
   },
 
   async markAsRead(userId: string, notificationId: string) {
-    await db.query(
+    const res = await db.query(
       `UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2`,
       [notificationId, userId]
     );
+    if (res.rowCount === 0) {
+      const existsRes = await db.query("SELECT user_id FROM notifications WHERE id = $1", [notificationId]);
+      if (existsRes.rows.length === 0) {
+        throw new Error("NOTIFICATION_NOT_FOUND");
+      } else {
+        throw new Error("UNAUTHORIZED_NOTIFICATION_ACCESS");
+      }
+    }
     return { ok: true };
   },
 

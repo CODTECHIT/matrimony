@@ -4,4 +4,5 @@ export { subscriptionsService } from "./subscriptions.service";
 export { messagesService } from "./messages.service";
 export { adminService } from "./admin.service";
 export { notificationsService } from "./notifications.service";
+export { supportService } from "./support.service";
 

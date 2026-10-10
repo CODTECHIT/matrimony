@@ -1,12 +1,22 @@
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  BadgeCheck,
+  BellRing,
   CreditCard,
+  FileText,
   Flag,
+  HeartHandshake,
+  Image as ImageIcon,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Package,
+  ScrollText,
+  Settings,
   ShieldCheck,
+  Sparkles,
+  Tag,
   Users,
   Wallet,
 } from "lucide-react";
@@ -16,10 +26,20 @@ import { useAdminAuth } from "@/hooks/useAuth";
 const nav = [
   { to: "/admin/matrimony", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/matrimony/users", label: "Users", icon: Users, exact: false },
+  { to: "/admin/matrimony/verification", label: "ID Verification", icon: BadgeCheck, exact: false },
+  { to: "/admin/matrimony/tickets", label: "Support Tickets", icon: LifeBuoy, exact: false },
+  { to: "/admin/matrimony/matches", label: "Match Oversight", icon: HeartHandshake, exact: false },
   { to: "/admin/matrimony/subscriptions", label: "Subscriptions", icon: CreditCard, exact: false },
   { to: "/admin/matrimony/packages", label: "Packages", icon: Package, exact: false },
   { to: "/admin/matrimony/payments", label: "Payments", icon: Wallet, exact: false },
+  { to: "/admin/matrimony/coupons", label: "Coupons & Offers", icon: Tag, exact: false },
+  { to: "/admin/matrimony/notifications", label: "Broadcasts", icon: BellRing, exact: false },
+  { to: "/admin/matrimony/banners", label: "Banners & Promos", icon: ImageIcon, exact: false },
+  { to: "/admin/matrimony/stories", label: "Success Stories", icon: Sparkles, exact: false },
+  { to: "/admin/matrimony/content", label: "CMS Content", icon: FileText, exact: false },
+  { to: "/admin/matrimony/settings", label: "Settings", icon: Settings, exact: false },
   { to: "/admin/matrimony/reports", label: "Reported profiles", icon: Flag, exact: false },
+  { to: "/admin/matrimony/audit-logs", label: "Audit Logs", icon: ScrollText, exact: false },
 ] as const;
 
 export function AdminShell({ children }: { children: ReactNode }) {

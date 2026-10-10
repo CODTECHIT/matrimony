@@ -30,6 +30,7 @@ import { messagesService, profilesService } from "@/services";
 import { CompleteProfileDialog } from "@/components/profile/CompleteProfileDialog";
 import { NotificationDropdown } from "@/components/notifications/NotificationDropdown";
 import { cn } from "@/lib/utils";
+import { PromoMarquee } from "@/components/layout/PromoMarquee";
 
 const bottomNav = [
   { to: "/app", label: "Home", icon: Home, exact: true },
@@ -103,6 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           isChatConversation && "hidden md:block",
         )}
       >
+        <PromoMarquee />
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3.5 py-2.5 sm:px-6">
           <div className="flex items-center gap-2 min-w-0 shrink">
             {/* Mobile Navigation Drawer Trigger (Menu button upside) */}

@@ -19,6 +19,8 @@ import {
   Share2,
   UserMinus,
   X,
+  Flag,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +29,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { LoadingState, ErrorState } from "@/components/common/states";
 import { messagesService, profilesService, subscriptionsService } from "@/services";
 import type { Profile } from "@/types";
@@ -63,7 +73,26 @@ function ProfileDetailsPage() {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [bookmarked, setBookmarked] = useState(false);
   const [bioExpanded, setBioExpanded] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("Fake Profile / Impersonation");
+  const [reportDetails, setReportDetails] = useState("");
+  const [submittingReport, setSubmittingReport] = useState(false);
   const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  const handleReportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingReport(true);
+    try {
+      await profilesService.reportProfile(profileId, reportReason, reportDetails);
+      toast.success("Profile reported. Our safety team will review the issue promptly.");
+      setReportModalOpen(false);
+      setReportDetails("");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to submit report");
+    } finally {
+      setSubmittingReport(false);
+    }
+  };
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
@@ -341,9 +370,10 @@ function ProfileDetailsPage() {
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
-              onClick={() => toast.info("Report submitted to moderation")}
-              className="rounded-xl cursor-pointer text-muted-foreground hover:text-foreground"
+              onClick={() => setReportModalOpen(true)}
+              className="rounded-xl cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"
             >
+              <Flag className="size-4" />
               Report Profile
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -815,6 +845,80 @@ function ProfileDetailsPage() {
           </button>
         </div>
       </div>
+
+      {/* Report Profile Dialog */}
+      <Dialog open={reportModalOpen} onOpenChange={setReportModalOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <form onSubmit={handleReportSubmit}>
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1 text-destructive">
+                <ShieldAlert className="size-5" />
+                <span className="text-xs font-semibold uppercase tracking-wider">Safety & Moderation</span>
+              </div>
+              <DialogTitle className="text-lg font-bold text-foreground">
+                Report {profile.fullName || "Member"}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Help us keep YFJ Matrimony secure. Reports are reviewed strictly by our safety moderators.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                  Reason for Report
+                </label>
+                <select
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium text-foreground focus:border-primary focus:outline-none"
+                >
+                  <option value="Fake Profile / Impersonation">Fake Profile / Impersonation</option>
+                  <option value="Misleading Information / False Bio">Misleading Information / False Bio</option>
+                  <option value="Harassment / Abusive Messages">Harassment / Abusive Messages</option>
+                  <option value="Inappropriate Photos or Content">Inappropriate Photos or Content</option>
+                  <option value="Financial Scam / Asking for Money">Financial Scam / Asking for Money</option>
+                  <option value="Already Married or Ineligible">Already Married or Ineligible</option>
+                  <option value="Other Policy Violation">Other Policy Violation</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                  Additional Details (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={reportDetails}
+                  onChange={(e) => setReportDetails(e.target.value)}
+                  placeholder="Provide any specific context or examples to help our team investigate..."
+                  className="w-full rounded-xl border border-border bg-background p-3 text-xs text-foreground focus:border-primary focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="flex gap-2 sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setReportModalOpen(false)}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={submittingReport}
+                variant="destructive"
+                className="text-xs gap-1.5"
+              >
+                <Flag className="size-3.5" />
+                {submittingReport ? "Submitting..." : "Submit Report"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

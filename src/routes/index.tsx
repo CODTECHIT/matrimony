@@ -20,6 +20,8 @@ import { ProfileCard } from "@/components/profiles/ProfileCard";
 import { ProfileCardSkeleton, ErrorState } from "@/components/common/states";
 import { PlanCard } from "@/components/pricing/PlanCard";
 import { profilesService, subscriptionsService } from "@/services";
+import { SuccessStoriesSection } from "@/components/stories/SuccessStoriesSection";
+import { BroadcastAnnouncementBanner } from "@/components/broadcasts/BroadcastAnnouncementBanner";
 import heroBg from "@/assets/hero-bg.jpg";
 
 export const Route = createFileRoute("/")({
@@ -379,8 +381,13 @@ function HomePage() {
         </div>
       </section>
 
+      {/* Broadcast Announcements (Visible to everyone, including unauthenticated visitors) */}
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-6">
+        <BroadcastAnnouncementBanner />
+      </div>
+
       {/* Why Families Choose YFJ */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+      <section className="mx-auto max-w-6xl px-4 py-12 sm:py-16 sm:px-6">
         <h2 className="font-display text-3xl font-semibold sm:text-4xl text-foreground">
           Why families choose YFJ
         </h2>
@@ -462,6 +469,9 @@ function HomePage() {
           ))}
         </ol>
       </section>
+
+      {/* Dynamic Success Stories from Admin Panel */}
+      <SuccessStoriesSection />
 
       {/* Membership Plans */}
       <section className="bg-surface py-16">

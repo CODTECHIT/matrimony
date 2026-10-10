@@ -1,8 +1,22 @@
 import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Mail, MapPin, Phone } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { api } from "@/lib/api-client";
 
 export function SiteFooter() {
+  const { data: settings } = useQuery<{
+    contact_email?: string;
+    helpline_phone?: string;
+  }>({
+    queryKey: ["settings", "public"],
+    queryFn: () => api.get("/settings/public"),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const phone = settings?.helpline_phone || "+91 99999 88888";
+  const email = settings?.contact_email || "support@yfjmatrimony.com";
+
   return (
     <footer className="border-t border-border bg-surface">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
@@ -18,7 +32,7 @@ export function SiteFooter() {
         </div>
 
         <nav aria-label="Company">
-          <h2 className="font-display text-lg font-semibold">Company</h2>
+          <h2 className="font-display text-lg font-semibold">Company & Policies</h2>
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             <li>
               <Link to="/about" className="hover:text-primary">
@@ -32,7 +46,7 @@ export function SiteFooter() {
             </li>
             <li>
               <Link to="/contact" className="hover:text-primary">
-                Contact
+                Contact & Support
               </Link>
             </li>
             <li>
@@ -45,6 +59,16 @@ export function SiteFooter() {
                 Privacy policy
               </Link>
             </li>
+            <li>
+              <Link to="/community" className="hover:text-primary">
+                Community guidelines
+              </Link>
+            </li>
+            <li>
+              <Link to="/refund" className="hover:text-primary">
+                Refund policy
+              </Link>
+            </li>
           </ul>
         </nav>
 
@@ -53,11 +77,11 @@ export function SiteFooter() {
           <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
               <Phone className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>+91 90145 67801</span>
+              <span>{phone}</span>
             </li>
             <li className="flex items-start gap-2">
               <Mail className="mt-0.5 size-4 shrink-0 text-primary" />
-              <span>Y.F.J.matrimony@gmail.com</span>
+              <span>{email}</span>
             </li>
             <li className="flex items-start gap-2">
               <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />

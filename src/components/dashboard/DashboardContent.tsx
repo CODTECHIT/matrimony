@@ -19,6 +19,9 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { profilesService, subscriptionsService } from "@/services";
 import { useAuth } from "@/hooks/useAuth";
+import { PromotionalBannerCarousel } from "@/components/banners/PromotionalBannerCarousel";
+
+import { SuccessStoriesSection } from "@/components/stories/SuccessStoriesSection";
 import type { Profile } from "@/types";
 import heroHands from "@/assets/hero-hands.jpg";
 
@@ -99,39 +102,38 @@ export function DashboardContent() {
 
   return (
     <div className="space-y-6 sm:space-y-8 w-full max-w-full overflow-x-hidden min-w-0">
-      {/* Hero Promo Banner matching Screen 9 */}
-      <section className="relative overflow-hidden rounded-[24px] sm:rounded-[28px] min-h-[180px] sm:min-h-[215px] shadow-xl shadow-rose-950/20 flex items-center bg-[#D92662] w-full max-w-full">
-        {/* Full-bleed photo aligned to show the hands on the right */}
-        <img
-          src={heroHands}
-          alt="Wedding celebration"
-          className="absolute inset-0 w-full h-full object-cover object-[75%_center]"
-        />
-
-        {/* Smooth gradient overlay: solid magenta on left, smoothly fading out to reveal hands on right */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#D92662] from-30% via-[#D92662]/90 via-55% to-transparent" />
-
-        {/* Left Content */}
-        <div className="relative z-10 p-5 sm:p-8 max-w-[65%] sm:max-w-md space-y-2 sm:space-y-2.5">
-          <h2 className="font-sans text-xl sm:text-3xl font-bold leading-tight text-white tracking-tight">
-            Find your <br />
-            perfect match
-          </h2>
-          <p className="text-xs sm:text-sm text-white/95 font-normal leading-snug">
-            Trusted by Families. <br />
-            Chosen by Hearts.
-          </p>
-          <div className="pt-1.5 sm:pt-2">
-            <Button
-              asChild
-              size="sm"
-              className="rounded-full bg-white hover:bg-rose-50 text-[#D92662] font-semibold text-xs sm:text-sm px-4 sm:px-5 py-2 sm:py-2.5 shadow-md transition-transform active:scale-95 cursor-pointer"
-            >
-              <Link to="/app/browse">Explore Profiles</Link>
-            </Button>
-          </div>
-        </div>
-      </section>
+      {/* Unified Hero Banner with Images: Dynamically loads announcements and promotional banners */}
+      <PromotionalBannerCarousel
+        fallback={
+          <section className="relative overflow-hidden rounded-[24px] sm:rounded-[28px] min-h-[185px] sm:min-h-[225px] shadow-xl shadow-stone-950/20 flex items-center bg-stone-950 w-full max-w-full border border-border/40">
+            <img
+              src={heroHands}
+              alt="Wedding celebration"
+              className="absolute inset-0 w-full h-full object-cover object-[75%_center]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-stone-950/95 from-20% via-stone-950/70 via-50% to-transparent pointer-events-none" />
+            <div className="relative z-10 p-5 sm:p-8 max-w-[70%] sm:max-w-md space-y-2 sm:space-y-2.5">
+              <h2 className="font-display text-xl sm:text-3xl font-bold leading-tight text-white tracking-tight drop-shadow-md">
+                Find your <br />
+                perfect match
+              </h2>
+              <p className="text-xs sm:text-sm text-stone-200 font-normal leading-snug drop-shadow-xs">
+                Trusted by Families. <br />
+                Chosen by Hearts.
+              </p>
+              <div className="pt-1.5 sm:pt-2">
+                <Button
+                  asChild
+                  size="sm"
+                  className="rounded-full bg-primary hover:bg-primary/90 text-white font-semibold text-xs sm:text-sm px-5 py-2 shadow-md shadow-primary/25 transition-transform active:scale-95 cursor-pointer"
+                >
+                  <Link to="/app/browse">Explore Profiles</Link>
+                </Button>
+              </div>
+            </div>
+          </section>
+        }
+      />
 
       {/* Search Bar with Light Gold circular border matching Requirement 3 */}
       <section className="flex items-center gap-2 sm:gap-2.5 w-full max-w-full min-w-0">
@@ -278,6 +280,9 @@ export function DashboardContent() {
           )}
         </div>
       </section>
+
+      {/* Real Success Stories from Admin Panel */}
+      <SuccessStoriesSection />
 
       {/* Informational & Legal Quick Links Footer */}
       <footer className="pt-6 pb-8 border-t border-border/60 text-center space-y-4">

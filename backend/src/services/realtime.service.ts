@@ -26,60 +26,37 @@ let wss: WebSocketServer | null = null;
 
 export function setupRealtimeServer(server: HttpServer): WebSocketServer {
   wss = new WebSocketServer({
-    server,
-    path: "/ws",
+    noServer: true,
   });
 
-  wss.on("connection", async (ws: AuthenticatedSocket, req) => {
-    ws.isAlive = true;
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
+    if (url.pathname !== "/ws") {
+      return;
+    }
 
-    // Parse token from URL query string, e.g. /ws?token=eyJ...
-    const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`);
-    const token = url.searchParams.get("token") || (req.headers["sec-websocket-protocol"] as string);
-
+    const token = url.searchParams.get("token") || (request.headers["sec-websocket-protocol"] as string);
     if (!token) {
-      ws.close(4001, "Authentication token required");
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
       return;
     }
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
-      ws.userId = decoded.id;
-
-      // Register socket in user socket set
-      if (!userSockets.has(ws.userId)) {
-        userSockets.set(ws.userId, new Set());
-      }
-      userSockets.get(ws.userId)!.add(ws);
-
-      // Query initial unread notifications count
-      let unreadCount = 0;
-      try {
-        const notifRes = await db.query(
-          "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE",
-          [ws.userId]
-        );
-        unreadCount = parseInt(notifRes.rows[0]?.count || "0", 10);
-      } catch {
-        // Table fallback
-      }
-
-      // Send connection acknowledgement
-      safeSend(ws, {
-        event: "connection:ack",
-        data: {
-          userId: ws.userId,
-          unreadCount,
-          timestamp: new Date().toISOString(),
-        },
+      wss!.handleUpgrade(request, socket, head, (ws) => {
+        (ws as AuthenticatedSocket).userId = decoded.id;
+        wss!.emit("connection", ws, request);
       });
-
-      console.log(`[WebSocket] Member ${ws.userId} connected (Active sockets: ${userSockets.get(ws.userId)?.size})`);
-    } catch (err: any) {
-      console.warn(`[WebSocket] Auth verification failed:`, err.message);
-      ws.close(4002, "Invalid or expired authentication token");
+    } catch {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
       return;
     }
+  });
+
+  wss.on("connection", async (ws: AuthenticatedSocket, _req) => {
+    ws.isAlive = true;
 
     ws.on("pong", () => {
       ws.isAlive = true;
@@ -87,11 +64,23 @@ export function setupRealtimeServer(server: HttpServer): WebSocketServer {
 
     ws.on("message", async (rawMessage) => {
       try {
-        const parsed = JSON.parse(rawMessage.toString()) as SocketEvent;
-        const { event, data } = parsed;
+        const rawStr = rawMessage.toString().trim();
+        if (rawStr === "ping") {
+          safeSend(ws, { event: "pong", data: { timestamp: Date.now() } } as any);
+          return;
+        }
+
+        let parsed: any;
+        try {
+          parsed = JSON.parse(rawStr);
+        } catch {
+          return;
+        }
+        const event = parsed.event || parsed.type;
+        const data = parsed.data || parsed.payload;
 
         if (event === "ping") {
-          safeSend(ws, { event: "pong", data: { timestamp: Date.now() } });
+          safeSend(ws, { event: "pong", type: "pong", data: { timestamp: Date.now() } } as any);
           return;
         }
 
@@ -209,6 +198,34 @@ export function setupRealtimeServer(server: HttpServer): WebSocketServer {
         }
       }
     });
+
+    if (ws.userId) {
+      if (!userSockets.has(ws.userId)) {
+        userSockets.set(ws.userId, new Set());
+      }
+      userSockets.get(ws.userId)!.add(ws);
+
+      void (async () => {
+        let unreadCount = 0;
+        try {
+          const notifRes = await db.query(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE",
+            [ws.userId]
+          );
+          unreadCount = parseInt(notifRes.rows[0]?.count || "0", 10);
+        } catch {}
+
+        safeSend(ws, {
+          event: "connection:ack",
+          type: "connection:ack",
+          data: {
+            userId: ws.userId,
+            unreadCount,
+            timestamp: new Date().toISOString(),
+          },
+        } as any);
+      })();
+    }
   });
 
   // Keep-alive heartbeat interval (every 30 seconds)
@@ -328,11 +345,24 @@ export function broadcastChatMessage(
   }
 }
 
+export function broadcastToAll(event: string, data: any): void {
+  const payload: SocketEvent = { event, data };
+  const str = JSON.stringify(payload);
+  for (const sockets of userSockets.values()) {
+    for (const ws of sockets) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(str);
+      }
+    }
+  }
+}
+
 /**
- * Global broadcast helper for interest requests, acceptances, and notifications
+ * Global broadcast helper for interest requests, acceptances, notifications, and support tickets
  */
 export const realtimeService = {
   sendToUser,
+  broadcastToAll,
   broadcastToConversation,
   broadcastChatMessage,
   isUserInConversation,
@@ -347,6 +377,15 @@ export const realtimeService = {
   },
   broadcastNotification: (userId: string, notification: any) => {
     sendToUser(userId, "notification:new", { notification });
+  },
+  broadcastTicketReply: (ticketId: string, replyPayload: any, recipientUserId?: string | null) => {
+    if (recipientUserId) {
+      sendToUser(recipientUserId, "ticket:reply", { ticketId, reply: replyPayload });
+    }
+    broadcastToAll("ticket:reply", { ticketId, reply: replyPayload });
+  },
+  broadcastTicketCreated: (ticket: any) => {
+    broadcastToAll("ticket:new", { ticket });
   },
 };
 

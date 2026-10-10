@@ -22,6 +22,12 @@ notificationsRouter.patch("/:id/read", requireAuth, async (req, res) => {
     const result = await notificationsService.markAsRead(req.user!.id, notifId);
     return res.json(result);
   } catch (err: any) {
+    if (err.message === "NOTIFICATION_NOT_FOUND") {
+      return res.status(404).json({ message: "Notification not found" });
+    }
+    if (err.message === "UNAUTHORIZED_NOTIFICATION_ACCESS") {
+      return res.status(403).json({ message: "Forbidden: Cannot access another member's notification" });
+    }
     return res.status(500).json({ message: err.message || "Failed to mark notification as read" });
   }
 });

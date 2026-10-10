@@ -13,11 +13,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as CommunityRouteImport } from './routes/community'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RefundRouteImport } from './routes/refund'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
@@ -32,12 +34,22 @@ import { Route as AppShortlistRouteImport } from './routes/app.shortlist'
 import { Route as AppSubscriptionRouteImport } from './routes/app.subscription'
 import { Route as AppUpgradeRouteImport } from './routes/app.upgrade'
 import { Route as AdminMatrimonyIndexRouteImport } from './routes/admin.matrimony.index'
+import { Route as AdminMatrimonyAuditLogsRouteImport } from './routes/admin.matrimony.audit-logs'
+import { Route as AdminMatrimonyBannersRouteImport } from './routes/admin.matrimony.banners'
+import { Route as AdminMatrimonyContentRouteImport } from './routes/admin.matrimony.content'
+import { Route as AdminMatrimonyCouponsRouteImport } from './routes/admin.matrimony.coupons'
 import { Route as AdminMatrimonyLoginRouteImport } from './routes/admin.matrimony.login'
+import { Route as AdminMatrimonyMatchesRouteImport } from './routes/admin.matrimony.matches'
+import { Route as AdminMatrimonyNotificationsRouteImport } from './routes/admin.matrimony.notifications'
 import { Route as AdminMatrimonyPackagesRouteImport } from './routes/admin.matrimony.packages'
 import { Route as AdminMatrimonyPaymentsRouteImport } from './routes/admin.matrimony.payments'
 import { Route as AdminMatrimonyReportsRouteImport } from './routes/admin.matrimony.reports'
+import { Route as AdminMatrimonySettingsRouteImport } from './routes/admin.matrimony.settings'
+import { Route as AdminMatrimonyStoriesRouteImport } from './routes/admin.matrimony.stories'
 import { Route as AdminMatrimonySubscriptionsRouteImport } from './routes/admin.matrimony.subscriptions'
+import { Route as AdminMatrimonyTicketsRouteImport } from './routes/admin.matrimony.tickets'
 import { Route as AdminMatrimonyUsersRouteImport } from './routes/admin.matrimony.users'
+import { Route as AdminMatrimonyVerificationRouteImport } from './routes/admin.matrimony.verification'
 import { Route as AppInterestsReceivedRouteImport } from './routes/app.interests.received'
 import { Route as AppInterestsSentRouteImport } from './routes/app.interests.sent'
 import { Route as AppMessagesIndexRouteImport } from './routes/app.messages.index'
@@ -66,6 +78,11 @@ const AppRoute = AppRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CommunityRoute = CommunityRouteImport.update({
+  id: '/community',
+  path: '/community',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
@@ -89,6 +106,11 @@ const PricingRoute = PricingRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RefundRoute = RefundRouteImport.update({
+  id: '/refund',
+  path: '/refund',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegisterRoute = RegisterRouteImport.update({
@@ -161,11 +183,42 @@ const AdminMatrimonyIndexRoute = AdminMatrimonyIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminMatrimonyRoute,
 } as any)
+const AdminMatrimonyAuditLogsRoute = AdminMatrimonyAuditLogsRouteImport.update({
+  id: '/audit-logs',
+  path: '/audit-logs',
+  getParentRoute: () => AdminMatrimonyRoute,
+} as any)
+const AdminMatrimonyBannersRoute = AdminMatrimonyBannersRouteImport.update({
+  id: '/banners',
+  path: '/banners',
+  getParentRoute: () => AdminMatrimonyRoute,
+} as any)
+const AdminMatrimonyContentRoute = AdminMatrimonyContentRouteImport.update({
+  id: '/content',
+  path: '/content',
+  getParentRoute: () => AdminMatrimonyRoute,
+} as any)
+const AdminMatrimonyCouponsRoute = AdminMatrimonyCouponsRouteImport.update({
+  id: '/coupons',
+  path: '/coupons',
+  getParentRoute: () => AdminMatrimonyRoute,
+} as any)
 const AdminMatrimonyLoginRoute = AdminMatrimonyLoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => AdminMatrimonyRoute,
 } as any)
+const AdminMatrimonyMatchesRoute = AdminMatrimonyMatchesRouteImport.update({
+  id: '/matches',
+  path: '/matches',
+  getParentRoute: () => AdminMatrimonyRoute,
+} as any)
+const AdminMatrimonyNotificationsRoute =
+  AdminMatrimonyNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AdminMatrimonyRoute,
+  } as any)
 const AdminMatrimonyPackagesRoute = AdminMatrimonyPackagesRouteImport.update({
   id: '/packages',
   path: '/packages',
@@ -181,17 +234,38 @@ const AdminMatrimonyReportsRoute = AdminMatrimonyReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => AdminMatrimonyRoute,
 } as any)
+const AdminMatrimonySettingsRoute = AdminMatrimonySettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AdminMatrimonyRoute,
+} as any)
+const AdminMatrimonyStoriesRoute = AdminMatrimonyStoriesRouteImport.update({
+  id: '/stories',
+  path: '/stories',
+  getParentRoute: () => AdminMatrimonyRoute,
+} as any)
 const AdminMatrimonySubscriptionsRoute =
   AdminMatrimonySubscriptionsRouteImport.update({
     id: '/subscriptions',
     path: '/subscriptions',
     getParentRoute: () => AdminMatrimonyRoute,
   } as any)
+const AdminMatrimonyTicketsRoute = AdminMatrimonyTicketsRouteImport.update({
+  id: '/tickets',
+  path: '/tickets',
+  getParentRoute: () => AdminMatrimonyRoute,
+} as any)
 const AdminMatrimonyUsersRoute = AdminMatrimonyUsersRouteImport.update({
   id: '/users',
   path: '/users',
   getParentRoute: () => AdminMatrimonyRoute,
 } as any)
+const AdminMatrimonyVerificationRoute =
+  AdminMatrimonyVerificationRouteImport.update({
+    id: '/verification',
+    path: '/verification',
+    getParentRoute: () => AdminMatrimonyRoute,
+  } as any)
 const AppInterestsReceivedRoute = AppInterestsReceivedRouteImport.update({
   id: '/interests/received',
   path: '/interests/received',
@@ -234,11 +308,13 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
   '/app': typeof AppRouteWithChildren
+  '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/register': typeof RegisterRoute
   '/terms': typeof TermsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -252,12 +328,22 @@ export interface FileRoutesByFullPath {
   '/app/subscription': typeof AppSubscriptionRoute
   '/app/upgrade': typeof AppUpgradeRoute
   '/app/': typeof AppIndexRoute
+  '/admin/matrimony/audit-logs': typeof AdminMatrimonyAuditLogsRoute
+  '/admin/matrimony/banners': typeof AdminMatrimonyBannersRoute
+  '/admin/matrimony/content': typeof AdminMatrimonyContentRoute
+  '/admin/matrimony/coupons': typeof AdminMatrimonyCouponsRoute
   '/admin/matrimony/login': typeof AdminMatrimonyLoginRoute
+  '/admin/matrimony/matches': typeof AdminMatrimonyMatchesRoute
+  '/admin/matrimony/notifications': typeof AdminMatrimonyNotificationsRoute
   '/admin/matrimony/packages': typeof AdminMatrimonyPackagesRoute
   '/admin/matrimony/payments': typeof AdminMatrimonyPaymentsRoute
   '/admin/matrimony/reports': typeof AdminMatrimonyReportsRoute
+  '/admin/matrimony/settings': typeof AdminMatrimonySettingsRoute
+  '/admin/matrimony/stories': typeof AdminMatrimonyStoriesRoute
   '/admin/matrimony/subscriptions': typeof AdminMatrimonySubscriptionsRoute
+  '/admin/matrimony/tickets': typeof AdminMatrimonyTicketsRoute
   '/admin/matrimony/users': typeof AdminMatrimonyUsersRoute
+  '/admin/matrimony/verification': typeof AdminMatrimonyVerificationRoute
   '/app/interests/received': typeof AppInterestsReceivedRoute
   '/app/interests/sent': typeof AppInterestsSentRoute
   '/app/messages/$conversationId': typeof AppMessagesConversationIdRoute
@@ -271,11 +357,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
+  '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/register': typeof RegisterRoute
   '/terms': typeof TermsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -286,12 +374,22 @@ export interface FileRoutesByTo {
   '/app/subscription': typeof AppSubscriptionRoute
   '/app/upgrade': typeof AppUpgradeRoute
   '/app': typeof AppIndexRoute
+  '/admin/matrimony/audit-logs': typeof AdminMatrimonyAuditLogsRoute
+  '/admin/matrimony/banners': typeof AdminMatrimonyBannersRoute
+  '/admin/matrimony/content': typeof AdminMatrimonyContentRoute
+  '/admin/matrimony/coupons': typeof AdminMatrimonyCouponsRoute
   '/admin/matrimony/login': typeof AdminMatrimonyLoginRoute
+  '/admin/matrimony/matches': typeof AdminMatrimonyMatchesRoute
+  '/admin/matrimony/notifications': typeof AdminMatrimonyNotificationsRoute
   '/admin/matrimony/packages': typeof AdminMatrimonyPackagesRoute
   '/admin/matrimony/payments': typeof AdminMatrimonyPaymentsRoute
   '/admin/matrimony/reports': typeof AdminMatrimonyReportsRoute
+  '/admin/matrimony/settings': typeof AdminMatrimonySettingsRoute
+  '/admin/matrimony/stories': typeof AdminMatrimonyStoriesRoute
   '/admin/matrimony/subscriptions': typeof AdminMatrimonySubscriptionsRoute
+  '/admin/matrimony/tickets': typeof AdminMatrimonyTicketsRoute
   '/admin/matrimony/users': typeof AdminMatrimonyUsersRoute
+  '/admin/matrimony/verification': typeof AdminMatrimonyVerificationRoute
   '/app/interests/received': typeof AppInterestsReceivedRoute
   '/app/interests/sent': typeof AppInterestsSentRoute
   '/app/messages/$conversationId': typeof AppMessagesConversationIdRoute
@@ -307,11 +405,13 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/admin': typeof AdminRouteWithChildren
   '/app': typeof AppRouteWithChildren
+  '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/refund': typeof RefundRoute
   '/register': typeof RegisterRoute
   '/terms': typeof TermsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -325,12 +425,22 @@ export interface FileRoutesById {
   '/app/subscription': typeof AppSubscriptionRoute
   '/app/upgrade': typeof AppUpgradeRoute
   '/app/': typeof AppIndexRoute
+  '/admin/matrimony/audit-logs': typeof AdminMatrimonyAuditLogsRoute
+  '/admin/matrimony/banners': typeof AdminMatrimonyBannersRoute
+  '/admin/matrimony/content': typeof AdminMatrimonyContentRoute
+  '/admin/matrimony/coupons': typeof AdminMatrimonyCouponsRoute
   '/admin/matrimony/login': typeof AdminMatrimonyLoginRoute
+  '/admin/matrimony/matches': typeof AdminMatrimonyMatchesRoute
+  '/admin/matrimony/notifications': typeof AdminMatrimonyNotificationsRoute
   '/admin/matrimony/packages': typeof AdminMatrimonyPackagesRoute
   '/admin/matrimony/payments': typeof AdminMatrimonyPaymentsRoute
   '/admin/matrimony/reports': typeof AdminMatrimonyReportsRoute
+  '/admin/matrimony/settings': typeof AdminMatrimonySettingsRoute
+  '/admin/matrimony/stories': typeof AdminMatrimonyStoriesRoute
   '/admin/matrimony/subscriptions': typeof AdminMatrimonySubscriptionsRoute
+  '/admin/matrimony/tickets': typeof AdminMatrimonyTicketsRoute
   '/admin/matrimony/users': typeof AdminMatrimonyUsersRoute
+  '/admin/matrimony/verification': typeof AdminMatrimonyVerificationRoute
   '/app/interests/received': typeof AppInterestsReceivedRoute
   '/app/interests/sent': typeof AppInterestsSentRoute
   '/app/messages/$conversationId': typeof AppMessagesConversationIdRoute
@@ -347,11 +457,13 @@ export interface FileRouteTypes {
     | '/about'
     | '/admin'
     | '/app'
+    | '/community'
     | '/contact'
     | '/forgot-password'
     | '/login'
     | '/pricing'
     | '/privacy'
+    | '/refund'
     | '/register'
     | '/terms'
     | '/admin/login'
@@ -365,12 +477,22 @@ export interface FileRouteTypes {
     | '/app/subscription'
     | '/app/upgrade'
     | '/app/'
+    | '/admin/matrimony/audit-logs'
+    | '/admin/matrimony/banners'
+    | '/admin/matrimony/content'
+    | '/admin/matrimony/coupons'
     | '/admin/matrimony/login'
+    | '/admin/matrimony/matches'
+    | '/admin/matrimony/notifications'
     | '/admin/matrimony/packages'
     | '/admin/matrimony/payments'
     | '/admin/matrimony/reports'
+    | '/admin/matrimony/settings'
+    | '/admin/matrimony/stories'
     | '/admin/matrimony/subscriptions'
+    | '/admin/matrimony/tickets'
     | '/admin/matrimony/users'
+    | '/admin/matrimony/verification'
     | '/app/interests/received'
     | '/app/interests/sent'
     | '/app/messages/$conversationId'
@@ -384,11 +506,13 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/admin'
+    | '/community'
     | '/contact'
     | '/forgot-password'
     | '/login'
     | '/pricing'
     | '/privacy'
+    | '/refund'
     | '/register'
     | '/terms'
     | '/admin/login'
@@ -399,12 +523,22 @@ export interface FileRouteTypes {
     | '/app/subscription'
     | '/app/upgrade'
     | '/app'
+    | '/admin/matrimony/audit-logs'
+    | '/admin/matrimony/banners'
+    | '/admin/matrimony/content'
+    | '/admin/matrimony/coupons'
     | '/admin/matrimony/login'
+    | '/admin/matrimony/matches'
+    | '/admin/matrimony/notifications'
     | '/admin/matrimony/packages'
     | '/admin/matrimony/payments'
     | '/admin/matrimony/reports'
+    | '/admin/matrimony/settings'
+    | '/admin/matrimony/stories'
     | '/admin/matrimony/subscriptions'
+    | '/admin/matrimony/tickets'
     | '/admin/matrimony/users'
+    | '/admin/matrimony/verification'
     | '/app/interests/received'
     | '/app/interests/sent'
     | '/app/messages/$conversationId'
@@ -419,11 +553,13 @@ export interface FileRouteTypes {
     | '/about'
     | '/admin'
     | '/app'
+    | '/community'
     | '/contact'
     | '/forgot-password'
     | '/login'
     | '/pricing'
     | '/privacy'
+    | '/refund'
     | '/register'
     | '/terms'
     | '/admin/login'
@@ -437,12 +573,22 @@ export interface FileRouteTypes {
     | '/app/subscription'
     | '/app/upgrade'
     | '/app/'
+    | '/admin/matrimony/audit-logs'
+    | '/admin/matrimony/banners'
+    | '/admin/matrimony/content'
+    | '/admin/matrimony/coupons'
     | '/admin/matrimony/login'
+    | '/admin/matrimony/matches'
+    | '/admin/matrimony/notifications'
     | '/admin/matrimony/packages'
     | '/admin/matrimony/payments'
     | '/admin/matrimony/reports'
+    | '/admin/matrimony/settings'
+    | '/admin/matrimony/stories'
     | '/admin/matrimony/subscriptions'
+    | '/admin/matrimony/tickets'
     | '/admin/matrimony/users'
+    | '/admin/matrimony/verification'
     | '/app/interests/received'
     | '/app/interests/sent'
     | '/app/messages/$conversationId'
@@ -458,11 +604,13 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   AdminRoute: typeof AdminRouteWithChildren
   AppRoute: typeof AppRouteWithChildren
+  CommunityRoute: typeof CommunityRoute
   ContactRoute: typeof ContactRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
+  RefundRoute: typeof RefundRoute
   RegisterRoute: typeof RegisterRoute
   TermsRoute: typeof TermsRoute
 }
@@ -495,6 +643,13 @@ declare module '@tanstack/react-router' {
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/community': {
+      id: '/community'
+      path: '/community'
+      fullPath: '/community'
+      preLoaderRoute: typeof CommunityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -530,6 +685,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/refund': {
+      id: '/refund'
+      path: '/refund'
+      fullPath: '/refund'
+      preLoaderRoute: typeof RefundRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register': {
@@ -630,11 +792,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMatrimonyIndexRouteImport
       parentRoute: typeof AdminMatrimonyRoute
     }
+    '/admin/matrimony/audit-logs': {
+      id: '/admin/matrimony/audit-logs'
+      path: '/audit-logs'
+      fullPath: '/admin/matrimony/audit-logs'
+      preLoaderRoute: typeof AdminMatrimonyAuditLogsRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
+    '/admin/matrimony/banners': {
+      id: '/admin/matrimony/banners'
+      path: '/banners'
+      fullPath: '/admin/matrimony/banners'
+      preLoaderRoute: typeof AdminMatrimonyBannersRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
+    '/admin/matrimony/content': {
+      id: '/admin/matrimony/content'
+      path: '/content'
+      fullPath: '/admin/matrimony/content'
+      preLoaderRoute: typeof AdminMatrimonyContentRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
+    '/admin/matrimony/coupons': {
+      id: '/admin/matrimony/coupons'
+      path: '/coupons'
+      fullPath: '/admin/matrimony/coupons'
+      preLoaderRoute: typeof AdminMatrimonyCouponsRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
     '/admin/matrimony/login': {
       id: '/admin/matrimony/login'
       path: '/login'
       fullPath: '/admin/matrimony/login'
       preLoaderRoute: typeof AdminMatrimonyLoginRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
+    '/admin/matrimony/matches': {
+      id: '/admin/matrimony/matches'
+      path: '/matches'
+      fullPath: '/admin/matrimony/matches'
+      preLoaderRoute: typeof AdminMatrimonyMatchesRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
+    '/admin/matrimony/notifications': {
+      id: '/admin/matrimony/notifications'
+      path: '/notifications'
+      fullPath: '/admin/matrimony/notifications'
+      preLoaderRoute: typeof AdminMatrimonyNotificationsRouteImport
       parentRoute: typeof AdminMatrimonyRoute
     }
     '/admin/matrimony/packages': {
@@ -658,6 +862,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMatrimonyReportsRouteImport
       parentRoute: typeof AdminMatrimonyRoute
     }
+    '/admin/matrimony/settings': {
+      id: '/admin/matrimony/settings'
+      path: '/settings'
+      fullPath: '/admin/matrimony/settings'
+      preLoaderRoute: typeof AdminMatrimonySettingsRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
+    '/admin/matrimony/stories': {
+      id: '/admin/matrimony/stories'
+      path: '/stories'
+      fullPath: '/admin/matrimony/stories'
+      preLoaderRoute: typeof AdminMatrimonyStoriesRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
     '/admin/matrimony/subscriptions': {
       id: '/admin/matrimony/subscriptions'
       path: '/subscriptions'
@@ -665,11 +883,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMatrimonySubscriptionsRouteImport
       parentRoute: typeof AdminMatrimonyRoute
     }
+    '/admin/matrimony/tickets': {
+      id: '/admin/matrimony/tickets'
+      path: '/tickets'
+      fullPath: '/admin/matrimony/tickets'
+      preLoaderRoute: typeof AdminMatrimonyTicketsRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
     '/admin/matrimony/users': {
       id: '/admin/matrimony/users'
       path: '/users'
       fullPath: '/admin/matrimony/users'
       preLoaderRoute: typeof AdminMatrimonyUsersRouteImport
+      parentRoute: typeof AdminMatrimonyRoute
+    }
+    '/admin/matrimony/verification': {
+      id: '/admin/matrimony/verification'
+      path: '/verification'
+      fullPath: '/admin/matrimony/verification'
+      preLoaderRoute: typeof AdminMatrimonyVerificationRouteImport
       parentRoute: typeof AdminMatrimonyRoute
     }
     '/app/interests/received': {
@@ -725,22 +957,42 @@ declare module '@tanstack/react-router' {
 }
 
 interface AdminMatrimonyRouteChildren {
+  AdminMatrimonyAuditLogsRoute: typeof AdminMatrimonyAuditLogsRoute
+  AdminMatrimonyBannersRoute: typeof AdminMatrimonyBannersRoute
+  AdminMatrimonyContentRoute: typeof AdminMatrimonyContentRoute
+  AdminMatrimonyCouponsRoute: typeof AdminMatrimonyCouponsRoute
   AdminMatrimonyLoginRoute: typeof AdminMatrimonyLoginRoute
+  AdminMatrimonyMatchesRoute: typeof AdminMatrimonyMatchesRoute
+  AdminMatrimonyNotificationsRoute: typeof AdminMatrimonyNotificationsRoute
   AdminMatrimonyPackagesRoute: typeof AdminMatrimonyPackagesRoute
   AdminMatrimonyPaymentsRoute: typeof AdminMatrimonyPaymentsRoute
   AdminMatrimonyReportsRoute: typeof AdminMatrimonyReportsRoute
+  AdminMatrimonySettingsRoute: typeof AdminMatrimonySettingsRoute
+  AdminMatrimonyStoriesRoute: typeof AdminMatrimonyStoriesRoute
   AdminMatrimonySubscriptionsRoute: typeof AdminMatrimonySubscriptionsRoute
+  AdminMatrimonyTicketsRoute: typeof AdminMatrimonyTicketsRoute
   AdminMatrimonyUsersRoute: typeof AdminMatrimonyUsersRoute
+  AdminMatrimonyVerificationRoute: typeof AdminMatrimonyVerificationRoute
   AdminMatrimonyIndexRoute: typeof AdminMatrimonyIndexRoute
 }
 
 const AdminMatrimonyRouteChildren: AdminMatrimonyRouteChildren = {
+  AdminMatrimonyAuditLogsRoute: AdminMatrimonyAuditLogsRoute,
+  AdminMatrimonyBannersRoute: AdminMatrimonyBannersRoute,
+  AdminMatrimonyContentRoute: AdminMatrimonyContentRoute,
+  AdminMatrimonyCouponsRoute: AdminMatrimonyCouponsRoute,
   AdminMatrimonyLoginRoute: AdminMatrimonyLoginRoute,
+  AdminMatrimonyMatchesRoute: AdminMatrimonyMatchesRoute,
+  AdminMatrimonyNotificationsRoute: AdminMatrimonyNotificationsRoute,
   AdminMatrimonyPackagesRoute: AdminMatrimonyPackagesRoute,
   AdminMatrimonyPaymentsRoute: AdminMatrimonyPaymentsRoute,
   AdminMatrimonyReportsRoute: AdminMatrimonyReportsRoute,
+  AdminMatrimonySettingsRoute: AdminMatrimonySettingsRoute,
+  AdminMatrimonyStoriesRoute: AdminMatrimonyStoriesRoute,
   AdminMatrimonySubscriptionsRoute: AdminMatrimonySubscriptionsRoute,
+  AdminMatrimonyTicketsRoute: AdminMatrimonyTicketsRoute,
   AdminMatrimonyUsersRoute: AdminMatrimonyUsersRoute,
+  AdminMatrimonyVerificationRoute: AdminMatrimonyVerificationRoute,
   AdminMatrimonyIndexRoute: AdminMatrimonyIndexRoute,
 }
 
@@ -825,11 +1077,13 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   AdminRoute: AdminRouteWithChildren,
   AppRoute: AppRouteWithChildren,
+  CommunityRoute: CommunityRoute,
   ContactRoute: ContactRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
+  RefundRoute: RefundRoute,
   RegisterRoute: RegisterRoute,
   TermsRoute: TermsRoute,
 }

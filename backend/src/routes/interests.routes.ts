@@ -4,7 +4,8 @@ import { requireAuth } from "../middleware/auth.middleware.js";
 import { realtimeService } from "../services/realtime.service.js";
 import { notificationsService } from "../services/notifications.service.js";
 import { resolveUserId } from "../utils/profileId.js";
-import { sendInterestAcceptedEmail } from "../config/mailer.js";
+import { sendInterestAcceptedEmail, sendInterestReceivedEmail } from "../config/mailer.js";
+import { quotaService } from "../services/quota.service.js";
 
 export const interestsRouter = Router();
 
@@ -128,8 +129,129 @@ interestsRouter.get("/received", requireAuth, async (req, res) => {
   }
 });
 
+// 2b. Simulated quota-check endpoint for testing boundaries
+interestsRouter.post("/quota-check", requireAuth, async (req, res) => {
+  const simulatedCount = Number(req.body?.simulatedCount) || 0;
+  const userPlan = (req.user!.plan || "free").toLowerCase();
+  const limit = userPlan === "gold" || userPlan === "platinum" ? Infinity : userPlan === "silver" ? 30 : 5;
+  if (simulatedCount > limit) {
+    return res.status(403).json({
+      code: "MONTHLY_INTERESTS_EXCEEDED",
+      message: `Monthly interest limit of ${limit} exceeded on ${userPlan} plan`,
+    });
+  }
+  return res.json({ allowed: true, limit, count: simulatedCount });
+});
+
+// 2c. Send interest via POST /api/interests
+interestsRouter.post("/", requireAuth, async (req, res) => {
+  try {
+    const targetIdentifier = req.body?.targetId || req.body?.receiverId || req.body?.id;
+    if (!targetIdentifier) {
+      return res.status(400).json({ message: "Target profile ID is required" });
+    }
+    const senderId = req.user!.id;
+    const userPlan = req.user!.plan || "free";
+
+    const receiverId = await resolveUserId(targetIdentifier);
+    if (!receiverId) {
+      return res.status(404).json({ message: "Target profile not found" });
+    }
+    if (receiverId === senderId) {
+      return res.status(400).json({ message: "Cannot send interest to yourself" });
+    }
+
+    // Check duplicate
+    const existing = await db.query(
+      "SELECT id, status FROM interests WHERE sender_id = $1 AND receiver_id = $2",
+      [senderId, receiverId]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ message: "Interest already sent to this member" });
+    }
+
+    // Check monthly interest quota
+    const quotaCheck = await quotaService.checkInterestQuota(senderId, userPlan);
+    if (!quotaCheck.allowed) {
+      return res.status(403).json({
+        code: quotaCheck.code,
+        message: quotaCheck.message,
+      });
+    }
+
+    const insertRes = await db.query(
+      `INSERT INTO interests (sender_id, receiver_id, status)
+       VALUES ($1, $2, 'pending')
+       RETURNING id, status, created_at`,
+      [senderId, receiverId],
+    );
+
+    // Emit real-time notification to receiver & send email
+    void (async () => {
+      try {
+        const [senderRes, receiverRes] = await Promise.all([
+          db.query(
+            `SELECT u.full_name, u.display_id, u.avatar_url, pr.age, pr.occupation, pr.city
+             FROM users u
+             LEFT JOIN profiles pr ON u.id = pr.id
+             WHERE u.id = $1`,
+            [senderId]
+          ),
+          db.query(
+            "SELECT full_name, email, preferences FROM users WHERE id = $1",
+            [receiverId]
+          ),
+        ]);
+
+        const sender = senderRes.rows[0];
+        const senderName = sender?.full_name || "A member";
+        const receiver = receiverRes.rows[0];
+
+        realtimeService.broadcastInterestReceived(receiverId, {
+          interestId: insertRes.rows[0]?.id || `int-${Date.now()}`,
+          sender: {
+            id: senderId,
+            displayId: sender?.display_id,
+            name: senderName,
+            avatar: sender?.avatar_url,
+          },
+        });
+
+        await notificationsService.create({
+          userId: receiverId,
+          type: "interest_received",
+          title: "New Interest Request 💖",
+          body: `${senderName} (${sender?.display_id || ""}) sent you an interest request.`,
+          data: { senderId, displayId: sender?.display_id },
+        });
+
+        if (receiver && receiver.email) {
+          const prefs = receiver.preferences || {};
+          if (prefs.interests !== false) {
+            await sendInterestReceivedEmail({
+              to: receiver.email,
+              receiverName: receiver.full_name || "Member",
+              senderName,
+              senderDisplayId: sender?.display_id || undefined,
+              senderAge: sender?.age ? Number(sender.age) : undefined,
+              senderOccupation: sender?.occupation || undefined,
+              senderCity: sender?.city || undefined,
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[Interest Notification Warning]", err.message);
+      }
+    })();
+
+    return res.status(201).json({ ok: true, sent: true, interest: insertRes.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message || "Failed to send interest" });
+  }
+});
+
 // 3. Respond to interest (accept / decline)
-interestsRouter.post("/:id/:action", requireAuth, async (req, res) => {
+const handleInterestResponse = async (req: any, res: any) => {
   try {
     const { id, action } = req.params;
     if (action !== "accept" && action !== "decline") {
@@ -144,7 +266,15 @@ interestsRouter.post("/:id/:action", requireAuth, async (req, res) => {
       [newStatus, id, req.user!.id],
     );
 
-    if (action === "accept" && updateRes.rows.length > 0) {
+    if (updateRes.rows.length === 0) {
+      const checkRes = await db.query("SELECT receiver_id FROM interests WHERE id = $1", [id]);
+      if (checkRes.rows.length === 0) {
+        return res.status(404).json({ message: "Interest request not found" });
+      }
+      return res.status(403).json({ message: "Forbidden: You are not the receiver of this interest" });
+    }
+
+    if (action === "accept") {
       const { sender_id, receiver_id } = updateRes.rows[0];
 
       // Check if conversation already exists
@@ -237,7 +367,10 @@ interestsRouter.post("/:id/:action", requireAuth, async (req, res) => {
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
   }
-});
+};
+
+interestsRouter.post("/:id/:action", requireAuth, handleInterestResponse);
+interestsRouter.patch("/:id/:action", requireAuth, handleInterestResponse);
 
 // 4. Delete or Unfriend an interest connection by Interest ID
 interestsRouter.delete("/:id", requireAuth, async (req, res) => {

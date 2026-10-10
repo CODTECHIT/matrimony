@@ -6,12 +6,15 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  ScrollRestoration,
+  type ErrorComponentProps,
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Toaster } from "@/components/ui/sonner";
+import { MaintenanceNotice } from "@/components/common/MaintenanceNotice";
 
 function NotFoundComponent() {
   return (
@@ -35,7 +38,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
 
@@ -124,6 +127,8 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <ScrollRestoration />
+        <MaintenanceNotice />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <Toaster position="top-center" richColors />

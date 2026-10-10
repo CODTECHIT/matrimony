@@ -1,4 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
 import {
   ArrowRight,
   Award,
@@ -167,6 +169,19 @@ const coreValues = [
 ];
 
 function AboutPage() {
+  const { data: cmsData } = useQuery<{
+    key: string;
+    title: string;
+    content: { body?: string };
+    updated_at: string;
+  }>({
+    queryKey: ["cms-content", "about"],
+    queryFn: () => api.get("/content/about"),
+    staleTime: 60 * 1000,
+  });
+
+  const cmsBody = cmsData?.content?.body;
+
   return (
     <PublicLayout>
       {/* 1. Full-Screen Cinematic Royal Hero with Authentic Wedding Photography */}
@@ -208,12 +223,16 @@ function AboutPage() {
                 A Trusted Platform for Finding Your Life Partner.
               </p>
 
-              {/* Lead Philosophical Statement */}
+              {/* Lead Philosophical Statement - Dynamically loads from CMS */}
               <p className="max-w-2xl text-base sm:text-lg text-stone-200 leading-relaxed font-light drop-shadow-xs">
-                At <strong className="font-semibold text-white">YFJ Matrimony</strong>, we believe
-                that marriage is a beautiful bond built on love, trust, understanding, and
-                commitment. Our mission is to help individuals find their perfect life partner and
-                begin a wonderful journey together.
+                {cmsBody || (
+                  <>
+                    At <strong className="font-semibold text-white">YFJ Matrimony</strong>, we believe
+                    that marriage is a beautiful bond built on love, trust, understanding, and
+                    commitment. Our mission is to help individuals find their perfect life partner and
+                    begin a wonderful journey together.
+                  </>
+                )}
               </p>
 
               {/* Tagline Proclamation Pill */}

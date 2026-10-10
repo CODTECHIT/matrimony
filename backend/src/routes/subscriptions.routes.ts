@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { db } from "../config/db.js";
-import { requireAuth } from "../middleware/auth.middleware.js";
+import { optionalAuth, requireAuth } from "../middleware/auth.middleware.js";
 import { quotaService } from "../services/quota.service.js";
 import { notificationsService } from "../services/notifications.service.js";
 import { sendPlanExpiringEmail, sendPlanExpiredEmail } from "../config/mailer.js";
@@ -327,6 +327,12 @@ subscriptionsRouter.post("/payments/verify", requireAuth, async (req, res) => {
       profileHighlight: isPlatinum,
     };
 
+    // Expire any existing active subscriptions for this member
+    await client.query(
+      `UPDATE subscriptions SET status = 'expired', auto_renew = false WHERE user_id = $1 AND status = 'active'`,
+      [userId],
+    );
+
     const subRes = await client.query(
       `INSERT INTO subscriptions (user_id, plan_id, tier, status, started_at, expires_at, auto_renew, permissions)
        VALUES ($1, $2, $3, 'active', NOW(), $4, TRUE, $5)
@@ -369,3 +375,74 @@ subscriptionsRouter.post("/subscriptions/cancel", requireAuth, async (req, res) 
     return res.status(500).json({ message: err.message });
   }
 });
+
+// 6. Validate Coupon for Checkout
+subscriptionsRouter.post("/coupons/validate", optionalAuth, async (req, res) => {
+  try {
+    const { code, amount } = req.body;
+    if (!code || !code.trim()) {
+      return res.status(400).json({ message: "Coupon code is required" });
+    }
+
+    const orderAmount = Number(amount) || 0;
+    const cleanCode = code.trim().toUpperCase();
+
+    const { rows } = await db.query(
+      `SELECT * FROM coupons WHERE UPPER(code) = $1`,
+      [cleanCode],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: `Coupon "${cleanCode}" is invalid` });
+    }
+
+    const coupon = rows[0];
+
+    if (!coupon.is_active) {
+      return res.status(400).json({ message: `Coupon "${cleanCode}" has been disabled` });
+    }
+
+    if (coupon.expires_at && new Date(coupon.expires_at).getTime() < Date.now()) {
+      return res.status(400).json({ message: `Coupon "${cleanCode}" has expired` });
+    }
+
+    if (coupon.usage_limit && (coupon.used_count || 0) >= coupon.usage_limit) {
+      return res.status(400).json({ message: `Coupon "${cleanCode}" usage limit reached` });
+    }
+
+    const minAmount = Number(coupon.min_amount) || 0;
+    if (orderAmount > 0 && orderAmount < minAmount) {
+      return res.status(400).json({
+        message: `Coupon requires a minimum order of ₹${minAmount}. Current plan is ₹${orderAmount}.`,
+      });
+    }
+
+    const discountVal = Number(coupon.discount_value);
+    let discountAmount = 0;
+
+    if (coupon.discount_type === "percentage") {
+      discountAmount = Math.round((orderAmount * discountVal) / 100);
+      const maxDiscount = Number(coupon.max_discount);
+      if (maxDiscount > 0 && discountAmount > maxDiscount) {
+        discountAmount = maxDiscount;
+      }
+    } else {
+      discountAmount = Math.min(orderAmount, discountVal);
+    }
+
+    const finalAmount = Math.max(0, orderAmount - discountAmount);
+
+    return res.json({
+      valid: true,
+      code: coupon.code,
+      discountType: coupon.discount_type,
+      discountValue: discountVal,
+      discountAmount,
+      finalAmount,
+      message: `Coupon "${coupon.code}" applied! You save ₹${discountAmount}.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+

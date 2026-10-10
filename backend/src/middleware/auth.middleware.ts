@@ -8,6 +8,8 @@ export interface AuthenticatedUser {
   role: "user" | "admin";
   plan: string;
   gender?: string;
+  fullName?: string;
+  email?: string;
 }
 
 declare global {

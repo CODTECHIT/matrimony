@@ -121,6 +121,7 @@ function mapProfileRow(
     city: row.city || "",
     state: row.state || "",
     country: row.country || "India",
+    whatsapp: row.whatsapp || undefined,
     dateOfBirth: row.date_of_birth
       ? (typeof row.date_of_birth === "string"
           ? row.date_of_birth
@@ -481,17 +482,18 @@ profilesRouter.patch("/me", requireAuth, async (req, res) => {
             val = null;
           } else {
             const birthDate = new Date(val);
-            if (!isNaN(birthDate.getTime())) {
-              const today = new Date();
-              let calculatedAge = today.getFullYear() - birthDate.getFullYear();
-              const m = today.getMonth() - birthDate.getMonth();
-              if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-                calculatedAge--;
-              }
-              if (calculatedAge >= 18 && calculatedAge <= 80) {
-                setClauses.push(`age = $${paramIndex++}`);
-                params.push(calculatedAge);
-              }
+            if (isNaN(birthDate.getTime())) {
+              return res.status(400).json({ message: "Invalid date of birth format" });
+            }
+            const today = new Date();
+            let calculatedAge = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+              calculatedAge--;
+            }
+            if (calculatedAge >= 18 && calculatedAge <= 80) {
+              setClauses.push(`age = $${paramIndex++}`);
+              params.push(calculatedAge);
             }
           }
         }
@@ -756,6 +758,50 @@ profilesRouter.post("/:id/shortlist", requireAuth, async (req, res) => {
   }
 });
 
+// 8b. Simulated view quota check for testing boundaries
+profilesRouter.post("/view-quota-check", requireAuth, async (req, res) => {
+  const simulatedCount = Number(req.body?.simulatedCount) || 0;
+  const userPlan = (req.user!.plan || "free").toLowerCase();
+  const limit = userPlan === "gold" || userPlan === "platinum" ? Infinity : userPlan === "silver" ? 200 : 50;
+  if (simulatedCount > limit) {
+    return res.status(403).json({
+      code: "DAILY_VIEW_QUOTA_EXCEEDED",
+      message: `Daily profile view limit of ${limit} exceeded on ${userPlan} plan`,
+    });
+  }
+  return res.json({ allowed: true, limit, count: simulatedCount });
+});
+
+// 8c. Update preferences alias via PUT /me/preferences
+profilesRouter.put("/me/preferences", requireAuth, async (req, res) => {
+  const updates = req.body || {};
+  const { rows: currentRows } = await db.query("SELECT preferences FROM users WHERE id = $1", [req.user!.id]);
+  if (currentRows.length === 0) return res.status(404).json({ message: "User not found" });
+
+  const currentPrefs = currentRows[0].preferences || {
+    interests: true,
+    messages: true,
+    matches: false,
+    photo: false,
+    contact: true,
+    online: true,
+  };
+
+  const allowedKeys = ["interests", "messages", "matches", "photo", "contact", "online"];
+  const merged = { ...currentPrefs };
+  for (const key of allowedKeys) {
+    if (typeof updates[key] === "boolean") {
+      merged[key] = updates[key];
+    }
+  }
+
+  const { rows } = await db.query(
+    "UPDATE users SET preferences = $1, updated_at = NOW() WHERE id = $2 RETURNING preferences",
+    [JSON.stringify(merged), req.user!.id]
+  );
+  return res.json(rows[0]?.preferences || merged);
+});
+
 // 9. Send interest (supports UUID and display ID)
 profilesRouter.post("/:id/interest", requireAuth, async (req, res) => {
   try {
@@ -769,6 +815,15 @@ profilesRouter.post("/:id/interest", requireAuth, async (req, res) => {
     }
     if (receiverId === senderId) {
       return res.status(400).json({ message: "Cannot send interest to yourself" });
+    }
+
+    // Check duplicate
+    const existing = await db.query(
+      "SELECT id FROM interests WHERE sender_id = $1 AND receiver_id = $2",
+      [senderId, receiverId]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ message: "Interest already sent to this member" });
     }
 
     // Check monthly interest quota
@@ -980,3 +1035,104 @@ profilesRouter.get("/:id", optionalAuth, async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 });
+
+// 11. Report a profile (requires authentication)
+profilesRouter.post("/:id/report", requireAuth, async (req, res) => {
+  try {
+    const rawId = (Array.isArray(req.params.id) ? req.params.id[0] : (req.params.id || "")).trim();
+    const { reason, description } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ message: "Reason for report is required" });
+    }
+
+    const isTargetUuid = isUuid(rawId);
+    const userRes = await db.query(
+      `SELECT id FROM users WHERE ${isTargetUuid ? "id = $1" : "display_id ILIKE $1"} LIMIT 1`,
+      [rawId],
+    );
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ message: "Target profile not found" });
+    }
+
+    const reportedUserId = userRes.rows[0].id;
+    const reportedById = req.user!.id;
+
+    if (reportedUserId === reportedById) {
+      return res.status(400).json({ message: "You cannot report your own profile" });
+    }
+
+    const reportText = description && description.trim() ? `${reason.trim()} — ${description.trim()}` : reason.trim();
+    const { rows } = await db.query(
+      `INSERT INTO reports (reported_user_id, reported_by_id, reason, status, created_at)
+       VALUES ($1, $2, $3, 'open', NOW())
+       RETURNING *`,
+      [reportedUserId, reportedById, reportText],
+    );
+
+    return res.json({
+      ok: true,
+      reportId: rows[0].id,
+      message: "Report submitted to moderation. Our safety team will review it promptly.",
+    });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+// 18. Member ID Verification Submission
+profilesRouter.post("/me/verify-id", requireAuth, async (req, res) => {
+  try {
+    const {
+      documentType = "aadhaar",
+      documentNumber = "",
+      documentFrontUrl,
+      documentBackUrl,
+      selfieUrl,
+    } = req.body;
+
+    if (!documentFrontUrl) {
+      return res.status(400).json({ message: "Front photo of your Government ID is required." });
+    }
+
+    const { rows } = await db.query(
+      `INSERT INTO id_verifications (user_id, document_type, document_number, document_front_url, document_back_url, selfie_url, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW(), NOW())
+       RETURNING *`,
+      [
+        req.user!.id,
+        documentType,
+        documentNumber ? documentNumber.trim() : null,
+        documentFrontUrl,
+        documentBackUrl || null,
+        selfieUrl || null,
+      ],
+    );
+
+    return res.json({
+      ok: true,
+      verification: rows[0],
+      message: "ID submitted successfully! Our trust & safety team will review it within 24 hours.",
+    });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+profilesRouter.get("/me/verification-status", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, user_id, document_type, document_number, document_front_url, document_back_url, selfie_url, status, rejection_reason, reviewed_at, created_at
+       FROM id_verifications
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [req.user!.id],
+    );
+
+    return res.json({ verification: rows[0] || null });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+

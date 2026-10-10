@@ -4,13 +4,17 @@ export function PageHeader({
   title,
   description,
   actions,
+  action,
   eyebrow,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
+  action?: ReactNode;
   eyebrow?: string;
 }) {
+  const actionContent = actions ?? action;
+
   return (
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between w-full min-w-0 max-w-full">
       <div className="min-w-0 flex-1">
@@ -24,7 +28,9 @@ export function PageHeader({
           <p className="mt-1 max-w-2xl text-xs sm:text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2 min-w-0">{actions}</div> : null}
+      {actionContent ? (
+        <div className="flex flex-wrap items-center gap-2 min-w-0 shrink-0">{actionContent}</div>
+      ) : null}
     </header>
   );
 }

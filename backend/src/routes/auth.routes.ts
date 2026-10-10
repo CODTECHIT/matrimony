@@ -193,6 +193,22 @@ authRouter.post("/register", async (req, res) => {
 
     const cleanEmail = email.trim().toLowerCase();
 
+    // Enforce platform settings
+    const settingsCheck = await client.query("SELECT key, value FROM system_settings WHERE key IN ('allow_registrations', 'auto_approve_profiles')");
+    const settingsMap: Record<string, any> = {};
+    for (const r of settingsCheck.rows) {
+      settingsMap[r.key] = r.value;
+    }
+
+    if (settingsMap.allow_registrations === false) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({
+        message: "New registrations are temporarily closed by the administrator. Please try again later.",
+      });
+    }
+
+    const initialStatus = settingsMap.auto_approve_profiles === true ? "approved" : "pending";
+
     // Check existing email
     const existing = await client.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [cleanEmail]);
     if (existing.rows.length > 0) {
@@ -214,9 +230,9 @@ authRouter.post("/register", async (req, res) => {
     // Insert user
     const userRes = await client.query(
       `INSERT INTO users (full_name, gender, email, mobile, password_hash, role, plan, profile_completion, profile_status)
-       VALUES ($1, $2, $3, $4, $5, 'user', 'free', 40, 'pending')
+       VALUES ($1, $2, $3, $4, $5, 'user', 'free', 40, $6)
        RETURNING id, full_name, email, mobile, gender, role, avatar_url, profile_completion, plan, profile_status, display_id`,
-      [fullName.trim(), gender.toLowerCase(), cleanEmail, mobile ? mobile.trim() : null, passwordHash],
+      [fullName.trim(), gender.toLowerCase(), cleanEmail, mobile ? mobile.trim() : null, passwordHash, initialStatus],
     );
 
     const user = userRes.rows[0];

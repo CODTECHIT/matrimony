@@ -2,25 +2,40 @@ import { useState, useMemo, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  BadgeCheck,
   Bell,
   CheckCheck,
-  MessageCircle,
-  Heart,
-  Sparkles,
-  User,
-  Trash2,
   ChevronDown,
   ChevronUp,
+  Headset,
+  Heart,
+  Megaphone,
+  MessageCircle,
+  ShieldAlert,
+  Sparkles,
+  Tag,
+  Trash2,
+  User,
 } from "lucide-react";
 import { notificationsService, type NotificationItem } from "@/services/notifications.service";
 import { realtimeClient } from "@/lib/realtime";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { SupportTicketModal } from "@/components/support/SupportTicketModal";
 
 interface GroupedMessageNotification {
   type: "grouped_chat";
@@ -64,6 +79,8 @@ export function NotificationDropdown() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<NotificationItem | null>(null);
+  const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["notifications"],
@@ -200,8 +217,25 @@ export function NotificationDropdown() {
         to: "/app/messages/$conversationId",
         params: { conversationId },
       });
+    } else if (
+      (item.type as string) === "verification" ||
+      (item.type as string) === "verification_approved" ||
+      (item.type as string) === "verification_rejected"
+    ) {
+      void navigate({ to: "/app/my-profile" });
     } else {
-      void navigate({ to: "/app/interests/received" });
+      const ticketNumber =
+        (item.data?.["ticketNumber"] as string | undefined) ||
+        (item.data?.["ticketId"] as string | undefined) ||
+        item.body?.match(/TICK-\d+/i)?.[0] ||
+        item.title?.match(/TICK-\d+/i)?.[0];
+
+      if (ticketNumber) {
+        setSelectedTicketNumber(ticketNumber);
+      } else {
+        // Broadcast announcement, promotion, or system alert - open details modal instead of redirecting
+        setSelectedAnnouncement(item);
+      }
     }
   };
 
@@ -238,13 +272,24 @@ export function NotificationDropdown() {
         return <Heart className="size-4 text-[#D92662] shrink-0" />;
       case "interest_accepted":
         return <Sparkles className="size-4 text-amber-500 shrink-0" />;
+      case "promo":
+        return <Tag className="size-4 text-amber-500 shrink-0" />;
+      case "announcement":
+      case "system":
+        return <Megaphone className="size-4 text-primary shrink-0" />;
+      case "security":
+        return <ShieldAlert className="size-4 text-destructive shrink-0" />;
+      case "verification":
+      case "verification_approved":
+        return <BadgeCheck className="size-4 text-emerald-500 shrink-0" />;
       default:
-        return <User className="size-4 text-muted-foreground shrink-0" />;
+        return <Bell className="size-4 text-primary shrink-0" />;
     }
   };
 
   return (
-    <DropdownMenu>
+    <>
+      <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -469,5 +514,92 @@ export function NotificationDropdown() {
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
+
+    {/* Announcement / Broadcast Detail Reader Dialog */}
+    <Dialog
+      open={Boolean(selectedAnnouncement)}
+      onOpenChange={(open) => {
+        if (!open) setSelectedAnnouncement(null);
+      }}
+    >
+      <DialogContent className="sm:max-w-md rounded-2xl">
+        <DialogHeader>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="grid size-9 place-items-center rounded-xl bg-primary-soft text-primary">
+              {selectedAnnouncement && getSingleIcon(selectedAnnouncement.type)}
+            </span>
+            <Badge variant="secondary" className="capitalize text-[10px]">
+              {selectedAnnouncement?.type || "Announcement"}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground ml-auto">
+              {selectedAnnouncement ? formatRelativeTime(selectedAnnouncement.createdAt) : ""}
+            </span>
+          </div>
+          <DialogTitle className="text-base font-bold text-foreground">
+            {selectedAnnouncement?.title}
+          </DialogTitle>
+          <DialogDescription className="text-xs text-foreground/85 mt-2 leading-relaxed whitespace-pre-wrap">
+            {selectedAnnouncement?.body}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="mt-4 flex sm:justify-between items-center gap-2">
+          {(() => {
+            const ticketInAnnouncement =
+              (selectedAnnouncement?.data?.["ticketNumber"] as string | undefined) ||
+              (selectedAnnouncement?.data?.["ticketId"] as string | undefined) ||
+              selectedAnnouncement?.body?.match(/TICK-\d+/i)?.[0] ||
+              selectedAnnouncement?.title?.match(/TICK-\d+/i)?.[0];
+
+            if (ticketInAnnouncement) {
+              return (
+                <Button
+                  onClick={() => {
+                    const num = ticketInAnnouncement;
+                    setSelectedAnnouncement(null);
+                    setSelectedTicketNumber(num);
+                  }}
+                  className="w-full sm:w-auto gap-2 text-xs"
+                >
+                  <Headset className="size-3.5" />
+                  Reply to Support ({ticketInAnnouncement})
+                </Button>
+              );
+            }
+
+            if ((selectedAnnouncement?.type as string) === "promo") {
+              return (
+                <Button
+                  onClick={() => {
+                    setSelectedAnnouncement(null);
+                    void navigate({ to: "/app/upgrade" });
+                  }}
+                  className="w-full sm:w-auto gap-2 text-xs"
+                >
+                  <Tag className="size-3.5" />
+                  View Upgrade Offers
+                </Button>
+              );
+            }
+
+            return <div />;
+          })()}
+          <Button
+            variant="outline"
+            onClick={() => setSelectedAnnouncement(null)}
+            className="w-full sm:w-auto text-xs"
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Dedicated Support Ticket Conversation & Reply Modal */}
+    <SupportTicketModal
+      ticketNumberOrId={selectedTicketNumber}
+      open={Boolean(selectedTicketNumber)}
+      onClose={() => setSelectedTicketNumber(null)}
+    />
+    </>
   );
 }

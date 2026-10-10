@@ -115,4 +115,29 @@ export const subscriptionsService = {
     }
     return api.post("/subscriptions/cancel");
   },
+
+  async validateCoupon(code: string, amount: number): Promise<{
+    valid: boolean;
+    code: string;
+    discountType: "percentage" | "fixed";
+    discountValue: number;
+    discountAmount: number;
+    finalAmount: number;
+    message: string;
+  }> {
+    if (env.useMockApi) {
+      const discount = Math.round((amount * 20) / 100);
+      return delay({
+        valid: true,
+        code: code.toUpperCase(),
+        discountType: "percentage",
+        discountValue: 20,
+        discountAmount: discount,
+        finalAmount: Math.max(0, amount - discount),
+        message: `Coupon "${code.toUpperCase()}" applied! You save ₹${discount}.`,
+      }, 150);
+    }
+    return api.post("/coupons/validate", { code, amount });
+  },
 };
+

@@ -5,6 +5,7 @@ import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
+import { PromoMarquee } from "@/components/layout/PromoMarquee";
 
 const links = [
   { to: "/", label: "Home" },
@@ -33,6 +34,7 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-amber-500/20 bg-background/95 backdrop-blur-md shadow-xs">
+      <PromoMarquee />
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
         <Logo linkTo={isAuthenticated ? "/app" : "/"} />
 
