@@ -7,6 +7,7 @@ import { requireAdmin } from "../middleware/auth.middleware.js";
 import { logAdminAction } from "../utils/audit.js";
 import { realtimeService } from "../services/realtime.service.js";
 import { s3Client, bucketName, cloudFrontDomain, region } from "../config/aws.js";
+import { isRazorpayConfigured, refundGatewayPayment } from "../config/razorpay.js";
 
 export const adminRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "yfj_matrimony_secret_jwt_key_2026_dev";
@@ -662,6 +663,29 @@ adminRouter.post("/reports/:id/block-and-resolve", async (req, res) => {
 
 adminRouter.post("/payments/:id/refund", async (req, res) => {
   try {
+    const { rows } = await db.query(`SELECT * FROM payments WHERE id = $1`, [req.params.id]);
+    const payment = rows[0];
+
+    if (!payment) {
+      return res.status(404).json({ message: "Payment record not found" });
+    }
+
+    // If live Razorpay payment, initiate gateway refund
+    if (
+      isRazorpayConfigured() &&
+      payment.gateway_ref &&
+      payment.gateway_ref.startsWith("pay_") &&
+      !payment.gateway_ref.startsWith("pay_sim_")
+    ) {
+      try {
+        const amountInPaise = payment.amount_inr ? Math.round(payment.amount_inr * 100) : undefined;
+        await refundGatewayPayment(payment.gateway_ref, amountInPaise);
+      } catch (gatewayErr: any) {
+        console.error("[Razorpay Refund Error]", gatewayErr);
+        // Note: proceed with database status update if refund was already handled or error is non-fatal
+      }
+    }
+
     await db.query(`UPDATE payments SET status = 'refunded' WHERE id = $1`, [req.params.id]);
 
     await logAdminAction({
@@ -670,6 +694,7 @@ adminRouter.post("/payments/:id/refund", async (req, res) => {
       action: "payment_refunded",
       targetType: "payment",
       targetId: req.params.id,
+      metadata: { amountInr: payment.amount_inr, gatewayRef: payment.gateway_ref },
       ipAddress: req.ip,
     });
 

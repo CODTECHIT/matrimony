@@ -7,9 +7,17 @@ import { mockPayments, mockPlans, mockSubscription, mockUser } from "@/mocks/dat
 export interface PaymentOrder {
   orderId: string;
   amountInr: number;
+  amountPaise?: number;
   currency: string;
   /** Publishable gateway key returned by the backend for the checkout widget. */
   gatewayKey: string;
+  isSimulation?: boolean;
+}
+
+export interface CreateOrderParams {
+  planId: string;
+  isYearly?: boolean;
+  couponCode?: string;
 }
 
 export const subscriptionsService = {
@@ -55,28 +63,32 @@ export const subscriptionsService = {
   },
 
   /** Step 1 of checkout — the backend creates the order with the gateway. */
-  async createOrder(planId: string): Promise<PaymentOrder> {
+  async createOrder(params: string | CreateOrderParams): Promise<PaymentOrder> {
+    const payload = typeof params === "string" ? { planId: params } : params;
     if (env.useMockApi) {
-      const plan = mockPlans.find((p) => p.id === planId);
+      const plan = mockPlans.find((p) => p.id === payload.planId);
+      const basePrice = payload.isYearly ? Math.round((plan?.priceInr ?? 0) * 0.8) : (plan?.priceInr ?? 0);
       return delay({
-        orderId: `order_mock_${planId}`,
-        amountInr: plan?.priceInr ?? 0,
+        orderId: `order_mock_${payload.planId}`,
+        amountInr: basePrice,
         currency: "INR",
         gatewayKey: env.paymentPublicKey,
+        isSimulation: true,
       });
     }
-    return api.post("/payments/orders", { planId });
+    return api.post("/payments/orders", payload);
   },
 
   /** Step 2 — the backend verifies the gateway signature. Never done client-side. */
-  async verifyPayment(payload: Record<string, string>): Promise<Subscription> {
+  async verifyPayment(payload: Record<string, any>): Promise<Subscription> {
     if (env.useMockApi) {
       const plan = mockPlans.find((p) => p.id === payload["planId"]) || mockPlans[2]!;
+      const paidAmount = Number(payload["finalAmount"]) || plan.priceInr;
       mockPayments.unshift({
         id: `pay-${Date.now()}`,
         user: mockUser.fullName,
         plan: plan.name,
-        amountInr: plan.priceInr,
+        amountInr: paidAmount,
         status: "success",
         createdAt: new Date().toISOString().split("T")[0]!,
         gatewayRef: payload["razorpay_payment_id"] || `pay_rzp_${Date.now()}`,
@@ -87,8 +99,9 @@ export const subscriptionsService = {
       mockSubscription.tier = plan.tier;
       mockSubscription.status = "active";
       mockSubscription.startedAt = new Date().toISOString().split("T")[0]!;
+      const duration = payload["isYearly"] ? 12 : (plan.durationMonths || 3);
       mockSubscription.expiresAt = new Date(
-        Date.now() + (plan.durationMonths || 3) * 30 * 86400000,
+        Date.now() + duration * 30 * 86400000,
       )
         .toISOString()
         .split("T")[0]!;

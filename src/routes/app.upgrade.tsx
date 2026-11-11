@@ -161,20 +161,30 @@ function UpgradePage() {
   const handleSelect = async (plan: Plan) => {
     if (plan.priceInr === 0) return;
     setPendingPlan(plan.id);
-    const basePrice = isYearly ? Math.round(plan.priceInr * 0.8) : plan.priceInr;
-    const finalAmount = appliedCoupon ? appliedCoupon.finalAmount : basePrice;
 
     try {
-      const order = await subscriptionsService.createOrder(plan.id);
+      const order = await subscriptionsService.createOrder({
+        planId: plan.id,
+        isYearly,
+        couponCode: appliedCoupon?.code,
+      });
 
-      // If Razorpay publishable key is set, open real Razorpay checkout modal
-      if (env.paymentPublicKey) {
+      const effectiveGatewayKey = order.gatewayKey || env.paymentPublicKey;
+      const isRealRazorpay =
+        Boolean(effectiveGatewayKey) &&
+        effectiveGatewayKey !== "rzp_test_sim" &&
+        !order.isSimulation &&
+        !order.orderId.startsWith("order_mock") &&
+        !order.orderId.startsWith("order_sim");
+
+      // If Razorpay live/test credentials are configured, launch Razorpay Checkout widget
+      if (isRealRazorpay) {
         const opened = await openRazorpayCheckout({
-          key: env.paymentPublicKey,
-          amountInr: finalAmount,
-          ...(order.orderId.startsWith("order_mock") ? {} : { orderId: order.orderId }),
+          key: effectiveGatewayKey,
+          amountInr: order.amountInr,
+          orderId: order.orderId,
           planName: plan.name,
-          description: `${plan.name} Membership (${plan.durationMonths} months)`,
+          description: `${plan.name} Membership (${isYearly ? 12 : plan.durationMonths} months)`,
           user: {
             ...(user?.fullName ? { fullName: user.fullName } : {}),
             ...(user?.email ? { email: user.email } : {}),
@@ -183,6 +193,8 @@ function UpgradePage() {
           onSuccess: async (payment) => {
             await subscriptionsService.verifyPayment({
               planId: plan.id,
+              isYearly,
+              couponCode: appliedCoupon?.code,
               razorpay_payment_id: payment.razorpay_payment_id,
               razorpay_order_id: payment.razorpay_order_id || order.orderId,
               razorpay_signature: payment.razorpay_signature || "",
@@ -192,22 +204,28 @@ function UpgradePage() {
             toast.success(`🎉 Upgrade Successful! You are now subscribed to ${plan.name}.`);
             void navigate({ to: "/app" });
           },
+          onDismiss: () => {
+            setPendingPlan(null);
+            toast.info("Payment was cancelled. You can retry whenever you're ready.");
+          },
         });
         if (opened) return;
       }
 
-      // Seamless simulation mode when in mock mode or when gateway key is pending
+      // Seamless simulation mode when in mock/sandbox demo mode without live gateway keys
       await subscriptionsService.verifyPayment({
         planId: plan.id,
-        orderId: order.orderId,
+        isYearly,
+        couponCode: appliedCoupon?.code,
+        razorpay_order_id: order.orderId,
         razorpay_payment_id: `pay_sim_${Date.now()}`,
       });
       await queryClient.invalidateQueries({ queryKey: ["subscription"] });
       await queryClient.invalidateQueries({ queryKey: ["admin", "payments"] });
-      toast.success(`🎉 Upgrade Successful (Simulated)! ${plan.name} plan activated.`);
+      toast.success(`🎉 Upgrade Successful! ${plan.name} plan activated.`);
       void navigate({ to: "/app" });
-    } catch {
-      toast.error("Could not process subscription. Please try again.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not process subscription. Please try again.");
     } finally {
       setPendingPlan(null);
     }

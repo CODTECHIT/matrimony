@@ -1,10 +1,19 @@
-import { Router } from "express";
+  import { Router } from "express";
 import crypto from "crypto";
 import { db } from "../config/db.js";
 import { optionalAuth, requireAuth } from "../middleware/auth.middleware.js";
 import { quotaService } from "../services/quota.service.js";
 import { notificationsService } from "../services/notifications.service.js";
-import { sendPlanExpiringEmail, sendPlanExpiredEmail } from "../config/mailer.js";
+import {
+  sendPlanExpiringEmail,
+  sendPlanExpiredEmail,
+  sendPaymentSuccessEmail,
+} from "../config/mailer.js";
+import {
+  isRazorpayConfigured,
+  createGatewayOrder,
+  verifyPaymentSignature,
+} from "../config/razorpay.js";
 
 export const subscriptionsRouter = Router();
 
@@ -213,24 +222,103 @@ subscriptionsRouter.get("/subscriptions/usage", requireAuth, async (req, res) =>
   }
 });
 
-// 3. Create payment order
+// Helper: Calculate plan price with billing frequency and coupon discounts
+async function calculateOrderAmount(
+  planId: string,
+  isYearly?: boolean,
+  couponCode?: string,
+): Promise<{
+  plan: any;
+  baseAmount: number;
+  discountAmount: number;
+  finalAmount: number;
+  coupon?: any;
+}> {
+  const { rows } = await db.query("SELECT * FROM plans WHERE id = $1", [planId]);
+  const plan = rows[0];
+  if (!plan) {
+    throw new Error("Selected plan not found");
+  }
+
+  const baseAmount = isYearly ? Math.round(plan.price_inr * 0.8) : plan.price_inr;
+  let discountAmount = 0;
+  let coupon: any = null;
+
+  if (couponCode && couponCode.trim()) {
+    const cleanCode = couponCode.trim().toUpperCase();
+    const couponRes = await db.query("SELECT * FROM coupons WHERE UPPER(code) = $1", [cleanCode]);
+    if (couponRes.rows.length > 0) {
+      const c = couponRes.rows[0];
+      const isNotExpired = !c.expires_at || new Date(c.expires_at).getTime() > Date.now();
+      const withinLimit = !c.usage_limit || (c.used_count || 0) < c.usage_limit;
+      const meetsMin = !c.min_amount || baseAmount >= Number(c.min_amount);
+
+      if (c.is_active && isNotExpired && withinLimit && meetsMin) {
+        coupon = c;
+        const discountVal = Number(c.discount_value);
+        if (c.discount_type === "percentage") {
+          discountAmount = Math.round((baseAmount * discountVal) / 100);
+          const maxDiscount = Number(c.max_discount);
+          if (maxDiscount > 0 && discountAmount > maxDiscount) {
+            discountAmount = maxDiscount;
+          }
+        } else {
+          discountAmount = Math.min(baseAmount, discountVal);
+        }
+      }
+    }
+  }
+
+  const finalAmount = Math.max(0, baseAmount - discountAmount);
+  return { plan, baseAmount, discountAmount, finalAmount, coupon };
+}
+
+// 3. Create payment order (Standard Razorpay Order API)
 subscriptionsRouter.post("/payments/orders", requireAuth, async (req, res) => {
   try {
-    const { planId } = req.body;
-    const { rows } = await db.query("SELECT * FROM plans WHERE id = $1", [planId]);
-    const plan = rows[0];
-
-    if (!plan) {
-      return res.status(404).json({ message: "Plan not found" });
+    const { planId, isYearly, couponCode } = req.body;
+    if (!planId) {
+      return res.status(400).json({ message: "Plan ID is required" });
     }
 
-    const orderId = `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const { plan, finalAmount, coupon } = await calculateOrderAmount(planId, isYearly, couponCode);
 
+    if (isRazorpayConfigured()) {
+      const receipt = `rcpt_${req.user!.id.slice(0, 8)}_${Date.now()}`;
+      const amountInPaise = Math.round(finalAmount * 100);
+
+      const rzpOrder = await createGatewayOrder({
+        amountInPaise,
+        currency: "INR",
+        receipt,
+        notes: {
+          userId: req.user!.id,
+          planId: plan.id,
+          tier: plan.tier,
+          couponCode: coupon?.code || "",
+          isYearly: String(Boolean(isYearly)),
+        },
+      });
+
+      return res.json({
+        orderId: rzpOrder.id,
+        amountInr: finalAmount,
+        amountPaise: rzpOrder.amount,
+        currency: "INR",
+        gatewayKey: process.env.RAZORPAY_KEY_ID,
+        isSimulation: false,
+      });
+    }
+
+    // Dev / Demo Simulation fallback
+    const mockOrderId = `order_sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     return res.json({
-      orderId,
-      amountInr: plan.price_inr,
+      orderId: mockOrderId,
+      amountInr: finalAmount,
+      amountPaise: Math.round(finalAmount * 100),
       currency: "INR",
-      gatewayKey: process.env.RAZORPAY_KEY_ID || process.env.PAYMENT_GATEWAY_KEY || "rzp_test_key",
+      gatewayKey: process.env.RAZORPAY_KEY_ID || "rzp_test_sim",
+      isSimulation: true,
     });
   } catch (err: any) {
     return res.status(500).json({ message: err.message });
@@ -241,46 +329,44 @@ subscriptionsRouter.post("/payments/orders", requireAuth, async (req, res) => {
 subscriptionsRouter.post("/payments/verify", requireAuth, async (req, res) => {
   const client = await db.getClient();
   try {
-    const { planId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const {
+      planId,
+      isYearly,
+      couponCode,
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    } = req.body;
     const userId = req.user!.id;
 
     if (!planId) {
       return res.status(400).json({ message: "Plan ID is required" });
     }
 
-    // Enforce cryptographic Razorpay signature verification
-    const razorpaySecret = process.env.RAZORPAY_KEY_SECRET;
     const isSimulationAllowed =
       process.env.NODE_ENV !== "production" && process.env.ALLOW_PAYMENT_SIMULATION === "true";
 
-    if (!razorpaySecret && !isSimulationAllowed) {
-      return res.status(500).json({
-        message: "Payment gateway is not configured on this server.",
-      });
-    }
-
-    if (razorpaySecret) {
+    if (isRazorpayConfigured()) {
       if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
         return res.status(400).json({
           message: "Payment verification failed: missing payment confirmation tokens",
         });
       }
 
-      const generatedSignature = crypto
-        .createHmac("sha256", razorpaySecret)
-        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-        .digest("hex");
+      const isValid = verifyPaymentSignature({
+        orderId: razorpay_order_id,
+        paymentId: razorpay_payment_id,
+        signature: razorpay_signature,
+      });
 
-      const generatedBuf = Buffer.from(generatedSignature, "utf8");
-      const providedBuf = Buffer.from(String(razorpay_signature), "utf8");
-
-      if (
-        generatedBuf.length !== providedBuf.length ||
-        !crypto.timingSafeEqual(generatedBuf, providedBuf)
-      ) {
+      if (!isValid) {
         return res.status(400).json({ message: "Invalid payment gateway signature" });
       }
-    } else if (isSimulationAllowed) {
+    } else if (!isSimulationAllowed) {
+      return res.status(500).json({
+        message: "Payment gateway is not configured on this server.",
+      });
+    } else {
       console.warn(
         `[SECURITY WARNING] Simulated payment verification accepted for user ${userId} (development mode only).`,
       );
@@ -288,31 +374,33 @@ subscriptionsRouter.post("/payments/verify", requireAuth, async (req, res) => {
 
     await client.query("BEGIN");
 
-    const planRes = await client.query("SELECT * FROM plans WHERE id = $1", [planId]);
-    const plan = planRes.rows[0];
-    if (!plan) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ message: "Selected plan does not exist" });
-    }
-
+    const { plan, finalAmount, coupon } = await calculateOrderAmount(planId, isYearly, couponCode);
     const tier = plan.tier || "gold";
 
     // Expire any existing active subscriptions for this user
     await client.query(
-      `UPDATE subscriptions SET status = 'expired' WHERE user_id = $1 AND status = 'active'`,
+      `UPDATE subscriptions SET status = 'expired', auto_renew = false WHERE user_id = $1 AND status = 'active'`,
       [userId],
     );
 
-    // Record the payment
+    // If coupon used, increment usage count
+    if (coupon) {
+      await client.query(
+        `UPDATE coupons SET used_count = COALESCE(used_count, 0) + 1 WHERE id = $1`,
+        [coupon.id],
+      );
+    }
+
+    // Record the payment with the real final amount
     const paymentRef = razorpay_payment_id || `sim_${Date.now()}`;
     await client.query(
       `INSERT INTO payments (user_id, plan_id, amount_inr, status, gateway_ref)
        VALUES ($1, $2, $3, 'success', $4)`,
-      [userId, planId, plan.price_inr || 0, paymentRef],
+      [userId, planId, finalAmount, paymentRef],
     );
 
-    // Compute precise expiration date
-    const durationMonths = Number(plan.duration_months) || 3;
+    // Compute precise expiration date (12 months if yearly, else duration_months)
+    const durationMonths = isYearly ? 12 : Number(plan.duration_months) || 3;
     const expiryDate = new Date();
     expiryDate.setMonth(expiryDate.getMonth() + durationMonths);
 
@@ -327,12 +415,6 @@ subscriptionsRouter.post("/payments/verify", requireAuth, async (req, res) => {
       profileHighlight: isPlatinum,
     };
 
-    // Expire any existing active subscriptions for this member
-    await client.query(
-      `UPDATE subscriptions SET status = 'expired', auto_renew = false WHERE user_id = $1 AND status = 'active'`,
-      [userId],
-    );
-
     const subRes = await client.query(
       `INSERT INTO subscriptions (user_id, plan_id, tier, status, started_at, expires_at, auto_renew, permissions)
        VALUES ($1, $2, $3, 'active', NOW(), $4, TRUE, $5)
@@ -344,6 +426,27 @@ subscriptionsRouter.post("/payments/verify", requireAuth, async (req, res) => {
     await client.query("UPDATE users SET plan = $1 WHERE id = $2", [tier, userId]);
 
     await client.query("COMMIT");
+
+    // Notifications & Email (asynchronous, non-blocking)
+    void notificationsService.create({
+      userId,
+      type: "system",
+      title: "🎉 Membership Upgraded!",
+      body: `Your account has been upgraded to ${plan.name} (${tier.toUpperCase()}). Enjoy your premium benefits!`,
+      data: { planId, tier, expiresAt: expiryDate.toISOString() },
+    }).catch(() => {});
+
+    if (req.user!.email) {
+      void sendPaymentSuccessEmail({
+        to: req.user!.email,
+        userName: req.user!.fullName || "Member",
+        planName: plan.name,
+        tier,
+        amountInr: finalAmount,
+        paymentId: paymentRef,
+        expiresAt: expiryDate,
+      }).catch((emailErr) => console.warn("[Payment Email Warning]", emailErr));
+    }
 
     const sub = subRes.rows[0];
     return res.json({
@@ -360,6 +463,128 @@ subscriptionsRouter.post("/payments/verify", requireAuth, async (req, res) => {
     return res.status(500).json({ message: err.message });
   } finally {
     client.release();
+  }
+});
+
+// 4b. Optional Razorpay Webhook endpoint
+subscriptionsRouter.post("/payments/webhook", async (req, res) => {
+  try {
+    const signature = req.headers["x-razorpay-signature"] as string;
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    if (webhookSecret && signature) {
+      const generatedSignature = crypto
+        .createHmac("sha256", webhookSecret)
+        .update(JSON.stringify(req.body))
+        .digest("hex");
+
+      if (generatedSignature !== signature) {
+        return res.status(400).json({ message: "Invalid webhook signature" });
+      }
+    }
+
+    const event = req.body.event;
+    console.log(`[Razorpay Webhook] Received event: ${event}`);
+
+    // Asynchronous fulfillment for payment.captured in case user closed modal prematurely
+    if (event === "payment.captured") {
+      const paymentEntity = req.body.payload?.payment?.entity;
+      if (paymentEntity) {
+        const paymentId = paymentEntity.id;
+        const notes = paymentEntity.notes || {};
+        const userId = notes.userId;
+        const planId = notes.planId;
+        const isYearly = notes.isYearly === "true";
+        const couponCode = notes.couponCode;
+
+        const existing = await db.query(
+          "SELECT id FROM payments WHERE gateway_ref = $1",
+          [paymentId],
+        );
+
+        if (existing.rows.length === 0 && userId && planId) {
+          const client = await db.getClient();
+          try {
+            await client.query("BEGIN");
+            const { plan, finalAmount, coupon } = await calculateOrderAmount(
+              planId,
+              isYearly,
+              couponCode,
+            );
+            const tier = plan.tier || "gold";
+
+            await client.query(
+              `UPDATE subscriptions SET status = 'expired', auto_renew = false WHERE user_id = $1 AND status = 'active'`,
+              [userId],
+            );
+
+            if (coupon) {
+              await client.query(
+                `UPDATE coupons SET used_count = COALESCE(used_count, 0) + 1 WHERE id = $1`,
+                [coupon.id],
+              );
+            }
+
+            await client.query(
+              `INSERT INTO payments (user_id, plan_id, amount_inr, status, gateway_ref)
+               VALUES ($1, $2, $3, 'success', $4)`,
+              [userId, planId, finalAmount, paymentId],
+            );
+
+            const durationMonths = isYearly ? 12 : Number(plan.duration_months) || 3;
+            const expiryDate = new Date();
+            expiryDate.setMonth(expiryDate.getMonth() + durationMonths);
+
+            const isPlatinum = tier === "platinum";
+            const isGold = tier === "gold" || isPlatinum;
+            const isSilver = tier === "silver" || isGold;
+            const permissions = {
+              canMessage: isSilver,
+              canViewContacts: isSilver,
+              canUseAdvancedFilters: isGold,
+              profileHighlight: isPlatinum,
+            };
+
+            await client.query(
+              `INSERT INTO subscriptions (user_id, plan_id, tier, status, started_at, expires_at, auto_renew, permissions)
+               VALUES ($1, $2, $3, 'active', NOW(), $4, TRUE, $5)`,
+              [userId, planId, tier, expiryDate.toISOString(), JSON.stringify(permissions)],
+            );
+
+            await client.query("UPDATE users SET plan = $1 WHERE id = $2", [tier, userId]);
+            await client.query("COMMIT");
+          } catch (innerErr) {
+            await client.query("ROLLBACK");
+            console.error("[Webhook Activation Error]", innerErr);
+          } finally {
+            client.release();
+          }
+        }
+      }
+    } else if (event === "payment.failed") {
+      const paymentEntity = req.body.payload?.payment?.entity;
+      if (paymentEntity) {
+        const paymentId = paymentEntity.id;
+        const notes = paymentEntity.notes || {};
+        const userId = notes.userId;
+        const planId = notes.planId;
+        if (userId && planId) {
+          const amountInr = Math.round((paymentEntity.amount || 0) / 100);
+          await db
+            .query(
+              `INSERT INTO payments (user_id, plan_id, amount_inr, status, gateway_ref)
+               VALUES ($1, $2, $3, 'failed', $4)`,
+              [userId, planId, amountInr, paymentId],
+            )
+            .catch(() => {});
+        }
+      }
+    }
+
+    return res.json({ status: "ok" });
+  } catch (err: any) {
+    console.error("[Razorpay Webhook Error]", err);
+    return res.status(500).json({ message: err.message });
   }
 });
 

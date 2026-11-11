@@ -465,3 +465,77 @@ export async function sendPlanExpiredEmail(params: {
     html,
   });
 }
+
+/**
+ * 7. Payment Confirmation & Subscription Activated Email
+ */
+export async function sendPaymentSuccessEmail(params: {
+  to: string;
+  userName: string;
+  planName: string;
+  tier: string;
+  amountInr: number;
+  paymentId: string;
+  expiresAt: Date | string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { to, userName, planName, tier, amountInr, paymentId, expiresAt } = params;
+  const dashboardUrl = `${FRONTEND_URL}/app`;
+  const formattedDate = new Date(expiresAt).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  const contentHtml = `
+    <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #1F2937;">Payment Confirmed — Welcome to ${planName}! 🎉</h2>
+    <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #4B5563;">
+      Hello <strong>${userName}</strong>,
+    </p>
+    <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #4B5563;">
+      Thank you for subscribing to <strong>${planName}</strong> on YFJ Matrimony. Your payment has been successfully processed and your premium membership is active immediately!
+    </p>
+
+    <!-- Payment Receipt Box -->
+    <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 14px; padding: 18px 20px; margin: 20px 0;">
+      <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #166534;">Payment Receipt Details:</h3>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #14532D;">
+        <tr>
+          <td style="padding: 4px 0; font-weight: 600;">Plan:</td>
+          <td style="padding: 4px 0; text-align: right;">${planName} (${tier.toUpperCase()})</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; font-weight: 600;">Amount Paid:</td>
+          <td style="padding: 4px 0; text-align: right; font-weight: 700;">₹${amountInr.toLocaleString("en-IN")}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; font-weight: 600;">Transaction ID:</td>
+          <td style="padding: 4px 0; text-align: right; font-family: monospace;">${paymentId}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 0; font-weight: 600;">Valid Until:</td>
+          <td style="padding: 4px 0; text-align: right;">${formattedDate}</td>
+        </tr>
+      </table>
+    </div>
+
+    <p style="margin: 16px 0 0 0; font-size: 14px; line-height: 1.6; color: #4B5563;">
+      You can now message profiles directly, view verified contact numbers, and use advanced filters to connect with your life partner.
+    </p>
+  `;
+
+  const html = renderEmailLayout({
+    previewText: `Your payment of ₹${amountInr} for ${planName} is confirmed! Premium features are now active.`,
+    contentHtml,
+    ctaText: "Start Exploring Matches",
+    ctaUrl: dashboardUrl,
+    footerNote: "This email serves as your official payment receipt for YFJ Matrimony membership.",
+  });
+
+  return sendMailHelper({
+    to,
+    subject: `Payment Successful: Your ${planName} membership is active! 💍`,
+    text: `Hello ${userName},\n\nYour payment of ₹${amountInr} for ${planName} (${paymentId}) has been confirmed. Your membership is active until ${formattedDate}.\n\nExplore matches now: ${dashboardUrl}\n\nBest regards,\nYFJ Matrimony Team`,
+    html,
+  });
+}
+
